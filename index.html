@@ -339,6 +339,31 @@
     body.light tr.row-trash td          { background: #fcd8e8; color: #666; }
     body.light tr.row-trash:hover td    { background: #f9bdd6; }
     body.light #trash-section > div:first-child { background: #fde8f0; }
+
+    /* ── Group headers ──────────────────────────────────────────────────── */
+    tr.group-header-row td {
+      background: #1e2330;
+      border-left: 3px solid var(--blue);
+      padding: 7px 14px;
+      font-size: 0.82rem;
+      user-select: none;
+    }
+    .group-header-name { font-weight: 600; color: var(--text); }
+    .group-header-meta { color: var(--muted); margin-left: 10px; font-size: 0.78rem; }
+    .group-badge {
+      display: inline-block;
+      border: 1px solid var(--border);
+      color: var(--cyan);
+      font-size: 0.7rem;
+      padding: 1px 6px;
+      border-radius: 10px;
+      margin-left: 6px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    body.light tr.group-header-row td { background: #dde8f8; }
+    body.light .group-header-name     { color: #1a1a1a; }
+    body.light .group-badge           { border-color: #aac; color: #1a5cd4; }
   </style>
 </head>
 <body>
@@ -353,6 +378,10 @@
           <label for="e-name">Task Name *</label>
           <input type="text" id="e-name" placeholder="What needs to be done?" />
           <div class="field-error" id="e-err-name">Task name is required.</div>
+        </div>
+        <div class="full">
+          <label for="e-group">Group</label>
+          <select id="e-group"><option value="">— No group —</option></select>
         </div>
         <div class="full">
           <label for="e-desc">Description / Notes</label>
@@ -405,6 +434,37 @@
   Storage unavailable — tasks will not persist after closing this tab.
 </div>
 
+<!-- ── Group Modal ── -->
+<div class="modal-backdrop" id="group-modal">
+  <div class="modal">
+    <div class="modal-title">Manage Groups</div>
+    <div id="group-list" style="margin-bottom:16px;min-height:24px;"></div>
+    <hr style="border-color:var(--border);margin-bottom:16px;" />
+    <div style="font-weight:600;font-size:0.9rem;margin-bottom:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Add New Group</div>
+    <form id="group-form" novalidate>
+      <div class="form-grid">
+        <div class="full">
+          <label for="g-name">Group Name *</label>
+          <input type="text" id="g-name" placeholder="e.g. AT&amp;T Joint Use Q1 2026" />
+          <div class="field-error" id="g-err-name">Group name is required.</div>
+        </div>
+        <div>
+          <label for="g-poles">Approved Poles</label>
+          <input type="number" id="g-poles" placeholder="e.g. 47" min="0" />
+        </div>
+        <div>
+          <label for="g-notes">Notes</label>
+          <input type="text" id="g-notes" placeholder="Optional" />
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:10px;">
+        <button type="submit" class="btn btn-primary btn-sm">Add Group</button>
+        <button type="button" class="btn btn-outline btn-sm" id="close-group-modal-btn">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <main>
 
   <!-- ── Add Task Form ── -->
@@ -422,6 +482,10 @@
           <label for="f-name">Task Name *</label>
           <input type="text" id="f-name" placeholder="What needs to be done?" />
           <div class="field-error" id="err-name">Task name is required.</div>
+        </div>
+        <div class="full">
+          <label for="f-group">Group</label>
+          <select id="f-group"><option value="">— No group —</option></select>
         </div>
         <div class="full">
           <label for="f-desc">Description / Notes</label>
@@ -469,6 +533,7 @@
         <button class="btn btn-outline" data-tab="pending">Pending</button>
         <button class="btn btn-outline" data-tab="complete">Completed</button>
         <button class="btn btn-outline" data-tab="trash">Trash</button>
+        <button class="btn btn-outline btn-sm" id="groups-btn" style="margin-left:8px;">Groups</button>
       </div>
       <div id="date-range-section">
         <select id="month-history" title="Browse by month">
@@ -535,6 +600,7 @@
 // ── State ──────────────────────────────────────────────────────────────────
 let allTasks = [];
 let trashTasks = [];
+let taskGroups = [];
 let currentFilter = { status: 'all', fromDate: '', toDate: '' };
 
 // ── Storage ────────────────────────────────────────────────────────────────
@@ -579,6 +645,13 @@ function saveTrash(tasks) {
   }
 }
 
+function loadGroups() {
+  try { return JSON.parse(localStorage.getItem('task_groups') || '[]'); } catch(e) { return []; }
+}
+function saveGroups(groups) {
+  try { localStorage.setItem('task_groups', JSON.stringify(groups)); } catch(e) {}
+}
+
 function purgeOldTrash() {
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
   trashTasks = trashTasks.filter(t => new Date(t.trashedAt).getTime() > cutoff);
@@ -592,7 +665,7 @@ function generateId() {
 }
 
 // ── Task CRUD ──────────────────────────────────────────────────────────────
-function createTask({ name, description, dueDate, scheduledDate, collaborators, emailFrom, emailSubject }) {
+function createTask({ name, description, dueDate, scheduledDate, collaborators, emailFrom, emailSubject, groupId }) {
   return {
     id: generateId(),
     name,
@@ -602,6 +675,7 @@ function createTask({ name, description, dueDate, scheduledDate, collaborators, 
     collaborators,
     emailFrom:    emailFrom    || '',
     emailSubject: emailSubject || '',
+    groupId:      groupId      || null,
     addedAt: new Date().toISOString(),
     completedAt: null,
     status: 'pending'
@@ -739,6 +813,41 @@ function renderAll() {
   if (currentFilter.status === 'complete') renderMonthDropdown();
 }
 
+function taskRow(t, showGroupBadge) {
+  const isComplete = t.status === 'complete';
+  const emailRef = (t.emailFrom || t.emailSubject)
+    ? `<div class="task-email-ref">✉ ${[t.emailFrom, t.emailSubject].filter(Boolean).join(' — ')}</div>`
+    : '';
+  let groupBadge = '';
+  if (showGroupBadge && t.groupId) {
+    const g = taskGroups.find(g => g.id === t.groupId);
+    if (g) groupBadge = `<span class="group-badge">${escape(g.name)}</span>`;
+  }
+  const nameCell = `<div class="task-name">${escape(t.name)}${groupBadge}</div>` +
+    (t.description ? `<div class="task-desc">${escape(t.description)}</div>` : '') +
+    emailRef;
+  const collabs = formatCollaborators(t.collaborators);
+  const actions = isComplete
+    ? `<button class="btn btn-warning btn-sm" data-id="${t.id}" data-action="undo">Undo</button>`
+    : `<button class="btn btn-success btn-sm" data-id="${t.id}" data-action="complete">Complete</button>`;
+  return `
+    <tr class="${isComplete ? 'row-complete' : t.dueDate === 'ASAP' ? 'row-asap' : ''}">
+      <td>${nameCell}</td>
+      <td>${escape(formatDate(t.dueDate))}</td>
+      <td>${escape(t.scheduledDate ? formatDateTime(t.scheduledDate) : '—')}</td>
+      <td>${escape(collabs)}</td>
+      <td>${escape(formatDateTime(t.addedAt))}</td>
+      <td>${isComplete ? escape(formatDateTime(t.completedAt)) : '<span class="dash">—</span>'}</td>
+      <td>
+        <div class="action-btns">
+          ${actions}
+          <button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="edit">Edit</button>
+          <button class="btn btn-danger btn-sm" data-id="${t.id}" data-action="delete">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+}
+
 function renderTasks(tasks) {
   const tbody = document.getElementById('task-tbody');
   if (!tasks.length) {
@@ -746,36 +855,41 @@ function renderTasks(tasks) {
     return;
   }
 
-  tbody.innerHTML = tasks.map(t => {
-    const isComplete = t.status === 'complete';
-    const emailRef = (t.emailFrom || t.emailSubject)
-      ? `<div class="task-email-ref">✉ ${[t.emailFrom, t.emailSubject].filter(Boolean).join(' — ')}</div>`
-      : '';
-    const nameCell = `<div class="task-name">${escape(t.name)}</div>` +
-      (t.description ? `<div class="task-desc">${escape(t.description)}</div>` : '') +
-      emailRef;
-    const collabs = formatCollaborators(t.collaborators);
-    const actions = isComplete
-      ? `<button class="btn btn-warning btn-sm" data-id="${t.id}" data-action="undo">Undo</button>`
-      : `<button class="btn btn-success btn-sm" data-id="${t.id}" data-action="complete">Complete</button>`;
+  const isGroupedView = currentFilter.status === 'all' || currentFilter.status === 'pending';
+  const hasAnyGroups  = taskGroups.length > 0 && tasks.some(t => t.groupId);
 
-    return `
-      <tr class="${isComplete ? 'row-complete' : t.dueDate === 'ASAP' ? 'row-asap' : ''}">
-        <td>${nameCell}</td>
-        <td>${escape(formatDate(t.dueDate))}</td>
-        <td>${escape(t.scheduledDate ? formatDateTime(t.scheduledDate) : '—')}</td>
-        <td>${escape(collabs)}</td>
-        <td>${escape(formatDateTime(t.addedAt))}</td>
-        <td>${isComplete ? escape(formatDateTime(t.completedAt)) : '<span class="dash">—</span>'}</td>
-        <td>
-          <div class="action-btns">
-            ${actions}
-            <button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="edit">Edit</button>
-            <button class="btn btn-danger btn-sm" data-id="${t.id}" data-action="delete">Delete</button>
-          </div>
-        </td>
-      </tr>`;
-  }).join('');
+  if (isGroupedView && hasAnyGroups) {
+    const grouped = {};
+    const ungrouped = [];
+    tasks.forEach(t => {
+      if (t.groupId) {
+        if (!grouped[t.groupId]) grouped[t.groupId] = [];
+        grouped[t.groupId].push(t);
+      } else {
+        ungrouped.push(t);
+      }
+    });
+
+    let html = '';
+    taskGroups.forEach(g => {
+      const gtasks = grouped[g.id];
+      if (!gtasks || !gtasks.length) return;
+      const meta = [
+        g.poleCount ? `${escape(g.poleCount)} poles approved` : '',
+        `${gtasks.length} task${gtasks.length !== 1 ? 's' : ''}`
+      ].filter(Boolean).join(' · ');
+      html += `<tr class="group-header-row"><td colspan="7"><span class="group-header-name">${escape(g.name)}</span><span class="group-header-meta">${meta}</span></td></tr>`;
+      html += gtasks.map(t => taskRow(t, false)).join('');
+    });
+    if (ungrouped.length) {
+      html += `<tr class="group-header-row"><td colspan="7"><span class="group-header-name">Ungrouped</span><span class="group-header-meta">${ungrouped.length} task${ungrouped.length !== 1 ? 's' : ''}</span></td></tr>`;
+      html += ungrouped.map(t => taskRow(t, false)).join('');
+    }
+    tbody.innerHTML = html;
+    return;
+  }
+
+  tbody.innerHTML = tasks.map(t => taskRow(t, currentFilter.status === 'complete')).join('');
 }
 
 function renderTrash() {
@@ -908,6 +1022,85 @@ function firstOfMonthStr() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
 }
 
+// ── Groups ──────────────────────────────────────────────────────────────────
+function populateGroupSelects() {
+  const opts = ['<option value="">— No group —</option>',
+    ...taskGroups.map(g =>
+      `<option value="${g.id}">${escape(g.name)}${g.poleCount ? ' · ' + escape(g.poleCount) + ' poles' : ''}</option>`)
+  ].join('');
+  document.getElementById('f-group').innerHTML = opts;
+  document.getElementById('e-group').innerHTML = opts;
+}
+
+function renderGroupList() {
+  const el = document.getElementById('group-list');
+  if (!taskGroups.length) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;margin:0;">No groups yet.</p>';
+    return;
+  }
+  el.innerHTML = taskGroups.map(g => {
+    const meta = [
+      g.poleCount ? `${escape(g.poleCount)} poles approved` : '',
+      g.notes      ? escape(g.notes)                        : ''
+    ].filter(Boolean).join(' · ');
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+        <div>
+          <span style="font-weight:600;">${escape(g.name)}</span>
+          ${meta ? `<span style="color:var(--muted);font-size:0.8rem;margin-left:8px;">${meta}</span>` : ''}
+        </div>
+        <button class="btn btn-danger btn-sm" data-group-id="${g.id}" data-action="delete-group">Delete</button>
+      </div>`;
+  }).join('');
+}
+
+function deleteGroup(id) {
+  allTasks = allTasks.map(t => t.groupId === id ? { ...t, groupId: null } : t);
+  saveTasks(allTasks);
+  taskGroups = taskGroups.filter(g => g.id !== id);
+  saveGroups(taskGroups);
+  populateGroupSelects();
+  renderGroupList();
+  renderAll();
+}
+
+function attachGroupModalListeners() {
+  document.getElementById('groups-btn').addEventListener('click', () => {
+    renderGroupList();
+    document.getElementById('group-modal').classList.add('open');
+  });
+  document.getElementById('close-group-modal-btn').addEventListener('click', () => {
+    document.getElementById('group-modal').classList.remove('open');
+  });
+  document.getElementById('group-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('group-modal'))
+      document.getElementById('group-modal').classList.remove('open');
+  });
+  document.getElementById('group-list').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action="delete-group"]');
+    if (btn) deleteGroup(btn.dataset.groupId);
+  });
+  document.getElementById('group-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const name  = document.getElementById('g-name').value.trim();
+    const errEl = document.getElementById('g-err-name');
+    errEl.style.display = name ? 'none' : 'block';
+    if (!name) return;
+    const g = {
+      id:        generateId(),
+      name,
+      poleCount: document.getElementById('g-poles').value.trim(),
+      notes:     document.getElementById('g-notes').value.trim(),
+      createdAt: new Date().toISOString()
+    };
+    taskGroups.push(g);
+    saveGroups(taskGroups);
+    populateGroupSelects();
+    renderGroupList();
+    e.target.reset();
+  });
+}
+
 // ── Event Listeners ────────────────────────────────────────────────────────
 function attachFormListener() {
   // Toggle form visibility
@@ -951,6 +1144,7 @@ function attachFormListener() {
       collaborators: parseCollaborators(document.getElementById('f-collab').value),
       emailFrom:    document.getElementById('f-email-from').value.trim(),
       emailSubject: document.getElementById('f-email-subject').value.trim(),
+      groupId:      document.getElementById('f-group').value || null,
     });
 
     allTasks.push(task);
@@ -1050,6 +1244,7 @@ function openEditModal(id) {
   duePicker.style.display = dueType === 'date' ? 'block' : 'none';
   duePicker.value = dueType === 'date' ? task.dueDate : '';
 
+  document.getElementById('e-group').value = task.groupId || '';
   document.getElementById('edit-modal').classList.add('open');
   document.getElementById('e-name').focus();
 }
@@ -1095,6 +1290,7 @@ function attachEditModal() {
         collaborators: parseCollaborators(document.getElementById('e-collab').value),
         emailFrom:    document.getElementById('e-email-from').value.trim(),
         emailSubject: document.getElementById('e-email-subject').value.trim(),
+        groupId:      document.getElementById('e-group').value || null,
       };
     });
 
@@ -1146,12 +1342,15 @@ document.addEventListener('DOMContentLoaded', () => {
   checkStorage();
   allTasks   = loadTasks();
   trashTasks = loadTrash();
+  taskGroups = loadGroups();
   purgeOldTrash();
+  populateGroupSelects();
   attachFormListener();
   attachFilterListeners();
   attachEditModal();
   attachTableListener();
   attachTrashListeners();
+  attachGroupModalListeners();
   renderAll();
 
   const savedTheme = localStorage.getItem('theme') || 'dark';
