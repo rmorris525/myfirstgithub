@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Tasks</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a1a;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1e3a5f;
+      color: #fff;
+      padding: 18px 24px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.02em; }
+    header p { font-size: 0.85rem; opacity: 0.7; margin-top: 2px; }
+
+    #storage-warning {
+      background: #fef3c7;
+      border-left: 4px solid #f59e0b;
+      padding: 10px 16px;
+      font-size: 0.875rem;
+      display: none;
+    }
+
+    main { max-width: 1100px; margin: 24px auto; padding: 0 16px 40px; }
+
+    /* ── Cards ── */
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #1e3a5f;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Form grid ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .form-grid .full { grid-column: 1 / -1; }
+
+    label { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 4px; color: #444; }
+    input[type="text"], input[type="date"], input[type="datetime-local"], textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
+      background: #fafafa;
+    }
+    input:focus, textarea:focus { outline: none; border-color: #2563eb; background: #fff; }
+    textarea { resize: vertical; min-height: 64px; }
+    .field-hint { font-size: 0.75rem; color: #888; margin-top: 3px; }
+    .field-error { font-size: 0.75rem; color: #dc2626; margin-top: 3px; display: none; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 7px 16px;
+      border: none; border-radius: 5px;
+      font-size: 0.875rem; font-weight: 600; font-family: inherit;
+      cursor: pointer;
+      transition: filter 0.15s, box-shadow 0.15s;
+    }
+    .btn:hover { filter: brightness(1.08); }
+    .btn:active { filter: brightness(0.95); }
+    .btn-primary  { background: #2563eb; color: #fff; }
+    .btn-success  { background: #16a34a; color: #fff; }
+    .btn-warning  { background: #d97706; color: #fff; }
+    .btn-danger   { background: #dc2626; color: #fff; }
+    .btn-outline  { background: #fff; color: #374151; border: 1px solid #d1d5db; }
+    .btn-outline.active { background: #1e3a5f; color: #fff; border-color: #1e3a5f; }
+    .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+    .btn-copy { background: #0891b2; color: #fff; }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    }
+    .tab-group { display: flex; gap: 4px; }
+    .date-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .date-range label { margin-bottom: 0; white-space: nowrap; }
+    .date-range input { width: 150px; }
+    #date-range-section { display: none; align-items: center; gap: 8px; flex-wrap: wrap; }
+    #copy-btn-wrap { display: none; }
+
+    .copy-confirm {
+      display: inline-block;
+      background: #16a34a; color: #fff;
+      font-size: 0.78rem; font-weight: 600;
+      padding: 3px 10px; border-radius: 4px;
+      margin-left: 6px;
+      animation: fadeout 2s forwards;
+    }
+    @keyframes fadeout {
+      0%   { opacity: 1; }
+      60%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    th {
+      background: #f8fafc;
+      text-align: left;
+      padding: 10px 12px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #555;
+      border-bottom: 2px solid #e5e7eb;
+      white-space: nowrap;
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #f0f0f0;
+      vertical-align: top;
+    }
+    tr.row-complete td { background: #f0fdf4; }
+    tr:hover td { background: #f5f9ff; }
+    tr.row-complete:hover td { background: #dcfce7; }
+    .task-name { font-weight: 600; }
+    .task-desc { font-size: 0.78rem; color: #777; margin-top: 2px; }
+    .dash { color: #bbb; }
+    .action-btns { display: flex; gap: 6px; flex-wrap: nowrap; }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 0;
+      color: #aaa;
+      font-size: 0.95rem;
+    }
+
+    @media (max-width: 640px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .form-grid .full { grid-column: 1; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>My Tasks</h1>
+  <p>Local task manager — data stays in your browser</p>
+</header>
+
+<div id="storage-warning">
+  Storage unavailable — tasks will not persist after closing this tab.
+</div>
+
+<main>
+
+  <!-- ── Add Task Form ── -->
+  <div class="card">
+    <div class="card-title">Add New Task</div>
+    <form id="task-form" novalidate>
+      <div class="form-grid">
+        <div class="full">
+          <label for="f-name">Task Name *</label>
+          <input type="text" id="f-name" placeholder="What needs to be done?" />
+          <div class="field-error" id="err-name">Task name is required.</div>
+        </div>
+        <div class="full">
+          <label for="f-desc">Description / Notes</label>
+          <textarea id="f-desc" placeholder="Optional details…"></textarea>
+        </div>
+        <div>
+          <label for="f-due">Due Date *</label>
+          <input type="date" id="f-due" />
+          <div class="field-error" id="err-due">Due date is required.</div>
+        </div>
+        <div>
+          <label for="f-scheduled">Scheduled Date &amp; Time</label>
+          <input type="datetime-local" id="f-scheduled" />
+        </div>
+        <div class="full">
+          <label for="f-collab">Collaborators</label>
+          <input type="text" id="f-collab" placeholder="Alice, Bob, Charlie" />
+          <div class="field-hint">Separate names with commas</div>
+        </div>
+      </div>
+      <div style="margin-top:18px;">
+        <button type="submit" class="btn btn-primary">+ Add Task</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── Filter Bar ── -->
+  <div class="card" style="padding:16px 24px;">
+    <div class="filter-bar">
+      <div class="tab-group">
+        <button class="btn btn-outline active" data-tab="all">All</button>
+        <button class="btn btn-outline" data-tab="pending">Pending</button>
+        <button class="btn btn-outline" data-tab="complete">Completed</button>
+      </div>
+      <div id="date-range-section">
+        <label style="font-size:0.82rem;font-weight:600;color:#444;">From</label>
+        <input type="date" id="f-from" style="width:150px;" />
+        <label style="font-size:0.82rem;font-weight:600;color:#444;">To</label>
+        <input type="date" id="f-to" style="width:150px;" />
+        <button class="btn btn-outline btn-sm" id="this-month-btn">This Month</button>
+      </div>
+      <div id="copy-btn-wrap">
+        <button class="btn btn-copy btn-sm" id="copy-btn">Copy for Email</button>
+        <span id="copy-confirm"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Task Table ── -->
+  <div class="card" style="padding:0;">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Due</th>
+            <th>Scheduled</th>
+            <th>Collaborators</th>
+            <th>Added</th>
+            <th>Completed</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="task-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let allTasks = [];
+let currentFilter = { status: 'all', fromDate: '', toDate: '' };
+
+// ── Storage ────────────────────────────────────────────────────────────────
+function loadTasks() {
+  try {
+    return JSON.parse(localStorage.getItem('tasks') || '[]');
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveTasks(tasks) {
+  try {
+    localStorage.setItem('tasks', JSON.stringify(tasks));
+  } catch (e) {
+    document.getElementById('storage-warning').style.display = 'block';
+  }
+}
+
+function checkStorage() {
+  try {
+    localStorage.setItem('__test__', '1');
+    localStorage.removeItem('__test__');
+  } catch (e) {
+    document.getElementById('storage-warning').style.display = 'block';
+  }
+}
+
+// ── ID generation ──────────────────────────────────────────────────────────
+function generateId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
+// ── Task CRUD ──────────────────────────────────────────────────────────────
+function createTask({ name, description, dueDate, scheduledDate, collaborators }) {
+  return {
+    id: generateId(),
+    name,
+    description,
+    dueDate,
+    scheduledDate,
+    collaborators,
+    addedAt: new Date().toISOString(),
+    completedAt: null,
+    status: 'pending'
+  };
+}
+
+function completeTask(id) {
+  allTasks = allTasks.map(t =>
+    t.id === id ? { ...t, status: 'complete', completedAt: new Date().toISOString() } : t
+  );
+  saveTasks(allTasks);
+  renderAll();
+}
+
+function uncompleteTask(id) {
+  allTasks = allTasks.map(t =>
+    t.id === id ? { ...t, status: 'pending', completedAt: null } : t
+  );
+  saveTasks(allTasks);
+  renderAll();
+}
+
+function deleteTask(id) {
+  if (!confirm('Delete this task? This cannot be undone.')) return;
+  allTasks = allTasks.filter(t => t.id !== id);
+  saveTasks(allTasks);
+  renderAll();
+}
+
+// ── Formatting ─────────────────────────────────────────────────────────────
+function formatDate(str) {
+  if (!str) return '—';
+  const d = new Date(str.includes('T') ? str : str + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatDateTime(str) {
+  if (!str) return '—';
+  const d = new Date(str);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' +
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatCollaborators(arr) {
+  return (arr && arr.length) ? arr.join(', ') : '—';
+}
+
+function parseCollaborators(str) {
+  return str.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function escape(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── Filtering ──────────────────────────────────────────────────────────────
+function filterTasks(tasks, filter) {
+  let result = tasks;
+
+  if (filter.status === 'pending') {
+    result = tasks.filter(t => t.status === 'pending');
+    result.sort((a, b) => (a.dueDate > b.dueDate ? 1 : -1));
+  } else if (filter.status === 'complete') {
+    result = tasks.filter(t => t.status === 'complete');
+    if (filter.fromDate) {
+      const from = new Date(filter.fromDate + 'T00:00:00').getTime();
+      result = result.filter(t => t.completedAt && new Date(t.completedAt).getTime() >= from);
+    }
+    if (filter.toDate) {
+      const to = new Date(filter.toDate + 'T23:59:59').getTime();
+      result = result.filter(t => t.completedAt && new Date(t.completedAt).getTime() <= to);
+    }
+    result.sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1));
+  } else {
+    result = [...tasks];
+    result.sort((a, b) => {
+      if (a.status === b.status) return a.dueDate > b.dueDate ? 1 : -1;
+      return a.status === 'pending' ? -1 : 1;
+    });
+  }
+
+  return result;
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderAll() {
+  const filtered = filterTasks(allTasks, currentFilter);
+  renderTasks(filtered);
+}
+
+function renderTasks(tasks) {
+  const tbody = document.getElementById('task-tbody');
+  if (!tasks.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">No tasks found.</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = tasks.map(t => {
+    const isComplete = t.status === 'complete';
+    const nameCell = `<div class="task-name">${escape(t.name)}</div>` +
+      (t.description ? `<div class="task-desc">${escape(t.description)}</div>` : '');
+    const collabs = formatCollaborators(t.collaborators);
+    const actions = isComplete
+      ? `<button class="btn btn-warning btn-sm" data-id="${t.id}" data-action="undo">Undo</button>`
+      : `<button class="btn btn-success btn-sm" data-id="${t.id}" data-action="complete">Complete</button>`;
+
+    return `
+      <tr class="${isComplete ? 'row-complete' : ''}">
+        <td>${nameCell}</td>
+        <td>${escape(formatDate(t.dueDate))}</td>
+        <td>${escape(t.scheduledDate ? formatDateTime(t.scheduledDate) : '—')}</td>
+        <td>${escape(collabs)}</td>
+        <td>${escape(formatDateTime(t.addedAt))}</td>
+        <td>${isComplete ? escape(formatDateTime(t.completedAt)) : '<span class="dash">—</span>'}</td>
+        <td>
+          <div class="action-btns">
+            ${actions}
+            <button class="btn btn-danger btn-sm" data-id="${t.id}" data-action="delete">Delete</button>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+// ── Copy for Email ─────────────────────────────────────────────────────────
+function copyForEmail() {
+  const filtered = filterTasks(allTasks, currentFilter);
+
+  let rangeLabel = 'All completed tasks';
+  if (currentFilter.fromDate && currentFilter.toDate) {
+    const from = new Date(currentFilter.fromDate + 'T00:00:00');
+    const to   = new Date(currentFilter.toDate   + 'T00:00:00');
+    // Check if it's a full month
+    const isFirstOfMonth = from.getDate() === 1;
+    const isToday = currentFilter.toDate === todayStr();
+    const sameMonth = from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+    if (isFirstOfMonth && isToday && sameMonth) {
+      rangeLabel = from.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    } else {
+      rangeLabel = formatDate(currentFilter.fromDate) + ' – ' + formatDate(currentFilter.toDate);
+    }
+  } else if (currentFilter.fromDate) {
+    rangeLabel = 'From ' + formatDate(currentFilter.fromDate);
+  } else if (currentFilter.toDate) {
+    rangeLabel = 'Through ' + formatDate(currentFilter.toDate);
+  }
+
+  const now = formatDateTime(new Date().toISOString());
+  const lines = [
+    `Completed Tasks — ${rangeLabel}`,
+    `Generated: ${now}`,
+    ``,
+    `${filtered.length} task(s) completed`,
+    ``,
+    `---`,
+  ];
+
+  filtered.forEach((t, i) => {
+    lines.push(``);
+    lines.push(`${i + 1}. ${t.name}`);
+    lines.push(`   Due:           ${formatDate(t.dueDate)}`);
+    lines.push(`   Completed:     ${formatDateTime(t.completedAt)}`);
+    lines.push(`   Scheduled:     ${t.scheduledDate ? formatDateTime(t.scheduledDate) : '—'}`);
+    lines.push(`   Collaborators: ${formatCollaborators(t.collaborators)}`);
+    lines.push(`   Notes:         ${t.description || '—'}`);
+  });
+
+  lines.push(``);
+  lines.push(`---`);
+
+  const text = lines.join('\n');
+
+  const confirmEl = document.getElementById('copy-confirm');
+
+  function showCopied() {
+    confirmEl.innerHTML = '';
+    const badge = document.createElement('span');
+    badge.className = 'copy-confirm';
+    badge.textContent = 'Copied!';
+    confirmEl.appendChild(badge);
+    setTimeout(() => { confirmEl.innerHTML = ''; }, 2200);
+  }
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(showCopied).catch(() => fallbackCopy(text, showCopied));
+  } else {
+    fallbackCopy(text, showCopied);
+  }
+}
+
+function fallbackCopy(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); cb(); } catch (e) { alert('Could not copy. Please copy manually.'); }
+  document.body.removeChild(ta);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function firstOfMonthStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+}
+
+// ── Event Listeners ────────────────────────────────────────────────────────
+function attachFormListener() {
+  document.getElementById('task-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = document.getElementById('f-name').value.trim();
+    const due  = document.getElementById('f-due').value;
+    let valid = true;
+
+    const errName = document.getElementById('err-name');
+    const errDue  = document.getElementById('err-due');
+    errName.style.display = name ? 'none' : 'block';
+    errDue.style.display  = due  ? 'none' : 'block';
+    if (!name || !due) return;
+
+    const task = createTask({
+      name,
+      description:   document.getElementById('f-desc').value.trim(),
+      dueDate:       due,
+      scheduledDate: document.getElementById('f-scheduled').value,
+      collaborators: parseCollaborators(document.getElementById('f-collab').value)
+    });
+
+    allTasks.push(task);
+    saveTasks(allTasks);
+    e.target.reset();
+    renderAll();
+  });
+}
+
+function attachFilterListeners() {
+  // Tab buttons
+  document.querySelectorAll('[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter.status = btn.dataset.tab;
+      const isComplete = currentFilter.status === 'complete';
+      document.getElementById('date-range-section').style.display = isComplete ? 'flex' : 'none';
+      document.getElementById('copy-btn-wrap').style.display = isComplete ? 'inline-flex' : 'none';
+      renderAll();
+    });
+  });
+
+  // Date range
+  document.getElementById('f-from').addEventListener('change', e => {
+    currentFilter.fromDate = e.target.value;
+    renderAll();
+  });
+  document.getElementById('f-to').addEventListener('change', e => {
+    currentFilter.toDate = e.target.value;
+    renderAll();
+  });
+
+  // This Month
+  document.getElementById('this-month-btn').addEventListener('click', () => {
+    const from = firstOfMonthStr();
+    const to   = todayStr();
+    currentFilter.fromDate = from;
+    currentFilter.toDate   = to;
+    document.getElementById('f-from').value = from;
+    document.getElementById('f-to').value   = to;
+    renderAll();
+  });
+
+  // Copy for Email
+  document.getElementById('copy-btn').addEventListener('click', copyForEmail);
+}
+
+function attachTableListener() {
+  document.getElementById('task-tbody').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const { id, action } = btn.dataset;
+    if (action === 'complete') completeTask(id);
+    else if (action === 'undo')   uncompleteTask(id);
+    else if (action === 'delete') deleteTask(id);
+  });
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  checkStorage();
+  allTasks = loadTasks();
+  attachFormListener();
+  attachFilterListeners();
+  attachTableListener();
+  renderAll();
+});
+</script>
+</body>
+</html>
