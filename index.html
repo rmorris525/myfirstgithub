@@ -452,24 +452,13 @@ function copyForEmail() {
     rangeLabel = 'Through ' + formatDate(currentFilter.toDate);
   }
 
-  const now = formatDateTime(new Date().toISOString());
   const lines = [
     `Completed Tasks — ${rangeLabel}`,
-    `Generated: ${now}`,
     ``,
-    `${filtered.length} task(s) completed`,
-    ``,
-    `---`,
   ];
 
-  filtered.forEach((t, i) => {
-    lines.push(``);
-    lines.push(`${i + 1}. ${t.name}`);
-    lines.push(`   Due:           ${formatDate(t.dueDate)}`);
-    lines.push(`   Completed:     ${formatDateTime(t.completedAt)}`);
-    lines.push(`   Scheduled:     ${t.scheduledDate ? formatDateTime(t.scheduledDate) : '—'}`);
-    lines.push(`   Collaborators: ${formatCollaborators(t.collaborators)}`);
-    lines.push(`   Notes:         ${t.description || '—'}`);
+  filtered.forEach(t => {
+    lines.push(`• ${t.name}`);
   });
 
   lines.push(``);
