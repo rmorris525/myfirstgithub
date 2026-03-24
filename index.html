@@ -184,6 +184,23 @@
     }
     .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; }
     .modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+
+    /* ── Trash ── */
+    .btn-outline[data-tab="trash"].active {
+      background: #7f1d1d;
+      color: #fff;
+      border-color: #7f1d1d;
+    }
+    tr.row-trash td {
+      background: #fef2f2;
+      color: #6b7280;
+    }
+    tr.row-trash:hover td { background: #fee2e2; }
+    #trash-section > div:first-child {
+      background: #fef2f2;
+      border-radius: 8px 8px 0 0;
+    }
+    #trash-section .card-title { color: #991b1b; }
   </style>
 </head>
 <body>
@@ -310,6 +327,7 @@
         <button class="btn btn-outline active" data-tab="all">All</button>
         <button class="btn btn-outline" data-tab="pending">Pending</button>
         <button class="btn btn-outline" data-tab="complete">Completed</button>
+        <button class="btn btn-outline" data-tab="trash">Trash</button>
       </div>
       <div id="date-range-section">
         <select id="month-history" title="Browse by month">
@@ -329,7 +347,7 @@
   </div>
 
   <!-- ── Task Table ── -->
-  <div class="card" style="padding:0;">
+  <div class="card" id="task-table-card" style="padding:0;">
     <div class="table-wrap">
       <table>
         <thead>
@@ -348,11 +366,34 @@
     </div>
   </div>
 
+  <!-- ── Trash Section ── -->
+  <div class="card" id="trash-section" style="display:none; padding:0;">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #f0f0f0;">
+      <span class="card-title" style="margin-bottom:0;">Trash</span>
+      <button class="btn btn-danger btn-sm" id="empty-trash-btn">Empty Trash</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Due</th>
+            <th>Added</th>
+            <th>Trashed</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="trash-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
 </main>
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 let allTasks = [];
+let trashTasks = [];
 let currentFilter = { status: 'all', fromDate: '', toDate: '' };
 
 // ── Storage ────────────────────────────────────────────────────────────────
@@ -379,6 +420,28 @@ function checkStorage() {
   } catch (e) {
     document.getElementById('storage-warning').style.display = 'block';
   }
+}
+
+function loadTrash() {
+  try {
+    return JSON.parse(localStorage.getItem('tasks_trash') || '[]');
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveTrash(tasks) {
+  try {
+    localStorage.setItem('tasks_trash', JSON.stringify(tasks));
+  } catch (e) {
+    document.getElementById('storage-warning').style.display = 'block';
+  }
+}
+
+function purgeOldTrash() {
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  trashTasks = trashTasks.filter(t => new Date(t.trashedAt).getTime() > cutoff);
+  saveTrash(trashTasks);
 }
 
 // ── ID generation ──────────────────────────────────────────────────────────
@@ -421,10 +484,41 @@ function uncompleteTask(id) {
 }
 
 function deleteTask(id) {
-  if (!confirm('Delete this task? This cannot be undone.')) return;
+  const task = allTasks.find(t => t.id === id);
+  if (!task) return;
+  trashTasks.push({ ...task, trashedAt: new Date().toISOString() });
+  saveTrash(trashTasks);
   allTasks = allTasks.filter(t => t.id !== id);
   saveTasks(allTasks);
   renderAll();
+}
+
+function restoreTask(id) {
+  const task = trashTasks.find(t => t.id === id);
+  if (!task) return;
+  if (!allTasks.find(t => t.id === task.id)) {
+    const { trashedAt, ...restored } = task;
+    allTasks.push(restored);
+    saveTasks(allTasks);
+  }
+  trashTasks = trashTasks.filter(t => t.id !== id);
+  saveTrash(trashTasks);
+  renderAll();
+  renderTrash();
+}
+
+function permanentlyDeleteTask(id) {
+  trashTasks = trashTasks.filter(t => t.id !== id);
+  saveTrash(trashTasks);
+  renderTrash();
+}
+
+function emptyTrash() {
+  if (!trashTasks.length) return;
+  if (!confirm('Permanently delete all trashed tasks? This cannot be undone.')) return;
+  trashTasks = [];
+  saveTrash(trashTasks);
+  renderTrash();
 }
 
 // ── Formatting ─────────────────────────────────────────────────────────────
@@ -495,6 +589,10 @@ function filterTasks(tasks, filter) {
 
 // ── Render ─────────────────────────────────────────────────────────────────
 function renderAll() {
+  if (currentFilter.status === 'trash') {
+    renderTrash();
+    return;
+  }
   const filtered = filterTasks(allTasks, currentFilter);
   renderTasks(filtered);
   if (currentFilter.status === 'complete') renderMonthDropdown();
@@ -533,6 +631,37 @@ function renderTasks(tasks) {
             ${actions}
             <button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="edit">Edit</button>
             <button class="btn btn-danger btn-sm" data-id="${t.id}" data-action="delete">Delete</button>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function renderTrash() {
+  const tbody = document.getElementById('trash-tbody');
+  if (!tbody) return;
+  if (!trashTasks.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state">Trash is empty.</div></td></tr>`;
+    return;
+  }
+  const sorted = [...trashTasks].sort((a, b) => b.trashedAt.localeCompare(a.trashedAt));
+  tbody.innerHTML = sorted.map(t => {
+    const emailRef = (t.emailFrom || t.emailSubject)
+      ? `<div class="task-email-ref">✉ ${[t.emailFrom, t.emailSubject].filter(Boolean).join(' — ')}</div>`
+      : '';
+    const nameCell = `<div class="task-name">${escape(t.name)}</div>` +
+      (t.description ? `<div class="task-desc">${escape(t.description)}</div>` : '') +
+      emailRef;
+    return `
+      <tr class="row-trash">
+        <td>${nameCell}</td>
+        <td>${escape(formatDate(t.dueDate))}</td>
+        <td>${escape(formatDateTime(t.addedAt))}</td>
+        <td>${escape(formatDateTime(t.trashedAt))}</td>
+        <td>
+          <div class="action-btns">
+            <button class="btn btn-success btn-sm" data-id="${t.id}" data-action="restore">Restore</button>
+            <button class="btn btn-danger btn-sm" data-id="${t.id}" data-action="perm-delete">Delete</button>
           </div>
         </td>
       </tr>`;
@@ -700,8 +829,11 @@ function attachFilterListeners() {
       btn.classList.add('active');
       currentFilter.status = btn.dataset.tab;
       const isComplete = currentFilter.status === 'complete';
+      const isTrash    = currentFilter.status === 'trash';
       document.getElementById('date-range-section').style.display = isComplete ? 'flex' : 'none';
-      document.getElementById('copy-btn-wrap').style.display = isComplete ? 'inline-flex' : 'none';
+      document.getElementById('copy-btn-wrap').style.display      = isComplete ? 'inline-flex' : 'none';
+      document.getElementById('task-table-card').style.display    = isTrash ? 'none' : '';
+      document.getElementById('trash-section').style.display      = isTrash ? '' : 'none';
       renderAll();
     });
   });
@@ -841,16 +973,30 @@ function attachTableListener() {
     else if (action === 'delete')   deleteTask(id);
     else if (action === 'edit')     openEditModal(id);
   });
+  document.getElementById('trash-tbody').addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const { id, action } = btn.dataset;
+    if (action === 'restore')       restoreTask(id);
+    else if (action === 'perm-delete') permanentlyDeleteTask(id);
+  });
+}
+
+function attachTrashListeners() {
+  document.getElementById('empty-trash-btn').addEventListener('click', emptyTrash);
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   checkStorage();
-  allTasks = loadTasks();
+  allTasks   = loadTasks();
+  trashTasks = loadTrash();
+  purgeOldTrash();
   attachFormListener();
   attachFilterListeners();
   attachEditModal();
   attachTableListener();
+  attachTrashListeners();
   renderAll();
 });
 </script>
