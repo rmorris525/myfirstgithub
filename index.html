@@ -250,8 +250,14 @@
 <main>
 
   <!-- ── Add Task Form ── -->
-  <div class="card">
-    <div class="card-title">Add New Task</div>
+  <div style="margin-bottom:16px;">
+    <button class="btn btn-primary" id="toggle-form-btn">+ New Task</button>
+  </div>
+  <div class="card" id="task-form-card" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <span class="card-title" style="margin-bottom:0;">New Task</span>
+      <button type="button" class="btn btn-outline btn-sm" id="close-form-btn">✕ Close</button>
+    </div>
     <form id="task-form" novalidate>
       <div class="form-grid">
         <div class="full">
@@ -297,6 +303,7 @@
   </div>
 
   <!-- ── Filter Bar ── -->
+
   <div class="card" style="padding:16px 24px;">
     <div class="filter-bar">
       <div class="tab-group">
@@ -633,6 +640,19 @@ function firstOfMonthStr() {
 
 // ── Event Listeners ────────────────────────────────────────────────────────
 function attachFormListener() {
+  // Toggle form visibility
+  function showForm() {
+    document.getElementById('task-form-card').style.display = 'block';
+    document.getElementById('toggle-form-btn').style.display = 'none';
+    document.getElementById('f-name').focus();
+  }
+  function hideForm() {
+    document.getElementById('task-form-card').style.display = 'none';
+    document.getElementById('toggle-form-btn').style.display = '';
+  }
+  document.getElementById('toggle-form-btn').addEventListener('click', showForm);
+  document.getElementById('close-form-btn').addEventListener('click', hideForm);
+
   // Show/hide date picker based on radio selection
   document.querySelectorAll('[name="due-type"]').forEach(r => {
     r.addEventListener('change', () => {
@@ -667,6 +687,7 @@ function attachFormListener() {
     saveTasks(allTasks);
     e.target.reset();
     document.getElementById('f-due').style.display = 'none';
+    hideForm();
     renderAll();
   });
 }
