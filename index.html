@@ -365,6 +365,9 @@
       vertical-align: middle;
       white-space: nowrap;
     }
+    tr.group-header-row { cursor: pointer; }
+    tr.group-header-row:hover td { filter: brightness(1.14); }
+    .group-toggle { margin-right: 6px; font-size: 0.68rem; color: var(--muted); }
     body.light tr.group-header-row td { background: #dde8f8; }
     body.light .group-header-name     { color: #1a1a1a; }
     body.light .group-badge           { border-color: #aac; color: #1a5cd4; }
@@ -684,7 +687,8 @@
 let allTasks = [];
 let trashTasks = [];
 let taskGroups = [];
-let currentFilter = { status: 'all', fromDate: '', toDate: '', groupId: null };
+let currentFilter   = { status: 'all', fromDate: '', toDate: '', groupId: null };
+let collapsedGroups = new Set(); // group ids collapsed in All Tasks view; '__ungrouped__' for Ungrouped
 
 // ── Storage ────────────────────────────────────────────────────────────────
 function loadTasks() {
@@ -988,13 +992,17 @@ function renderTasks(tasks) {
     taskGroups.forEach(g => {
       const gtasks = grouped[g.id];
       if (!gtasks || !gtasks.length) return;
-      const meta = `${gtasks.length} task${gtasks.length !== 1 ? 's' : ''}`;
-      html += `<tr class="group-header-row"><td colspan="7"><span class="group-header-name">${escape(g.name)}</span><span class="group-header-meta">${meta}</span></td></tr>`;
-      html += gtasks.map(t => taskRow(t, false)).join('');
+      const isCollapsed = collapsedGroups.has(g.id);
+      const arrow = isCollapsed ? '▶' : '▼';
+      const meta  = `${gtasks.length} task${gtasks.length !== 1 ? 's' : ''}`;
+      html += `<tr class="group-header-row" data-toggle-group="${g.id}"><td colspan="7"><span class="group-toggle">${arrow}</span><span class="group-header-name">${escape(g.name)}</span><span class="group-header-meta">${meta}</span></td></tr>`;
+      if (!isCollapsed) html += gtasks.map(t => taskRow(t, false)).join('');
     });
     if (ungrouped.length) {
-      html += `<tr class="group-header-row"><td colspan="7"><span class="group-header-name">Ungrouped</span><span class="group-header-meta">${ungrouped.length} task${ungrouped.length !== 1 ? 's' : ''}</span></td></tr>`;
-      html += ungrouped.map(t => taskRow(t, false)).join('');
+      const isCollapsed = collapsedGroups.has('__ungrouped__');
+      const arrow = isCollapsed ? '▶' : '▼';
+      html += `<tr class="group-header-row" data-toggle-group="__ungrouped__"><td colspan="7"><span class="group-toggle">${arrow}</span><span class="group-header-name">Ungrouped</span><span class="group-header-meta">${ungrouped.length} task${ungrouped.length !== 1 ? 's' : ''}</span></td></tr>`;
+      if (!isCollapsed) html += ungrouped.map(t => taskRow(t, false)).join('');
     }
     tbody.innerHTML = html;
     return;
@@ -1145,6 +1153,7 @@ function populateGroupSelects() {
 
 function deleteGroup(id) {
   if (currentFilter.groupId === id) currentFilter.groupId = null;
+  collapsedGroups.delete(id);
   allTasks = allTasks.map(t => t.groupId === id ? { ...t, groupId: null } : t);
   saveTasks(allTasks);
   taskGroups = taskGroups.filter(g => g.id !== id);
@@ -1432,6 +1441,14 @@ function attachEditModal() {
 
 function attachTableListener() {
   document.getElementById('task-tbody').addEventListener('click', e => {
+    const toggleRow = e.target.closest('[data-toggle-group]');
+    if (toggleRow) {
+      const gid = toggleRow.dataset.toggleGroup;
+      if (collapsedGroups.has(gid)) collapsedGroups.delete(gid);
+      else collapsedGroups.add(gid);
+      renderAll();
+      return;
+    }
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const { id, action } = btn.dataset;
