@@ -448,11 +448,7 @@
           <input type="text" id="g-name" placeholder="e.g. AT&amp;T Joint Use Q1 2026" />
           <div class="field-error" id="g-err-name">Group name is required.</div>
         </div>
-        <div>
-          <label for="g-poles">Approved Poles</label>
-          <input type="number" id="g-poles" placeholder="e.g. 47" min="0" />
-        </div>
-        <div>
+        <div class="full">
           <label for="g-notes">Notes</label>
           <input type="text" id="g-notes" placeholder="Optional" />
         </div>
@@ -485,7 +481,28 @@
         </div>
         <div class="full">
           <label for="f-group">Group</label>
-          <select id="f-group"><option value="">— No group —</option></select>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <select id="f-group" style="flex:1;"><option value="">— No group —</option></select>
+            <button type="button" class="btn btn-outline btn-sm" id="f-new-group-btn">+ New</button>
+          </div>
+          <div id="f-new-group-form" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);">
+            <div style="font-size:0.78rem;font-weight:600;margin-bottom:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">New Group</div>
+            <div class="form-grid">
+              <div class="full">
+                <label for="fg-name">Group Name *</label>
+                <input type="text" id="fg-name" placeholder="e.g. AT&amp;T Joint Use Q1 2026" />
+                <div class="field-error" id="fg-err-name">Group name is required.</div>
+              </div>
+              <div class="full">
+                <label for="fg-notes">Notes</label>
+                <input type="text" id="fg-notes" placeholder="Optional" />
+              </div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px;">
+              <button type="button" class="btn btn-primary btn-sm" id="fg-save-btn">Save Group</button>
+              <button type="button" class="btn btn-outline btn-sm" id="fg-cancel-btn">Cancel</button>
+            </div>
+          </div>
         </div>
         <div class="full">
           <label for="f-desc">Description / Notes</label>
@@ -874,10 +891,7 @@ function renderTasks(tasks) {
     taskGroups.forEach(g => {
       const gtasks = grouped[g.id];
       if (!gtasks || !gtasks.length) return;
-      const meta = [
-        g.poleCount ? `${escape(g.poleCount)} poles approved` : '',
-        `${gtasks.length} task${gtasks.length !== 1 ? 's' : ''}`
-      ].filter(Boolean).join(' · ');
+      const meta = `${gtasks.length} task${gtasks.length !== 1 ? 's' : ''}`;
       html += `<tr class="group-header-row"><td colspan="7"><span class="group-header-name">${escape(g.name)}</span><span class="group-header-meta">${meta}</span></td></tr>`;
       html += gtasks.map(t => taskRow(t, false)).join('');
     });
@@ -1026,7 +1040,7 @@ function firstOfMonthStr() {
 function populateGroupSelects() {
   const opts = ['<option value="">— No group —</option>',
     ...taskGroups.map(g =>
-      `<option value="${g.id}">${escape(g.name)}${g.poleCount ? ' · ' + escape(g.poleCount) + ' poles' : ''}</option>`)
+      `<option value="${g.id}">${escape(g.name)}</option>`)
   ].join('');
   document.getElementById('f-group').innerHTML = opts;
   document.getElementById('e-group').innerHTML = opts;
@@ -1039,10 +1053,7 @@ function renderGroupList() {
     return;
   }
   el.innerHTML = taskGroups.map(g => {
-    const meta = [
-      g.poleCount ? `${escape(g.poleCount)} poles approved` : '',
-      g.notes      ? escape(g.notes)                        : ''
-    ].filter(Boolean).join(' · ');
+    const meta = g.notes ? escape(g.notes) : '';
     return `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
         <div>
@@ -1087,10 +1098,9 @@ function attachGroupModalListeners() {
     errEl.style.display = name ? 'none' : 'block';
     if (!name) return;
     const g = {
-      id:        generateId(),
+      id:    generateId(),
       name,
-      poleCount: document.getElementById('g-poles').value.trim(),
-      notes:     document.getElementById('g-notes').value.trim(),
+      notes: document.getElementById('g-notes').value.trim(),
       createdAt: new Date().toISOString()
     };
     taskGroups.push(g);
@@ -1109,12 +1119,44 @@ function attachFormListener() {
     document.getElementById('toggle-form-btn').style.display = 'none';
     document.getElementById('f-name').focus();
   }
+  function hideInlineGroupForm() {
+    document.getElementById('f-new-group-form').style.display = 'none';
+    document.getElementById('f-new-group-btn').style.display  = '';
+    document.getElementById('fg-name').value  = '';
+    document.getElementById('fg-notes').value = '';
+    document.getElementById('fg-err-name').style.display = 'none';
+  }
   function hideForm() {
     document.getElementById('task-form-card').style.display = 'none';
     document.getElementById('toggle-form-btn').style.display = '';
+    hideInlineGroupForm();
   }
   document.getElementById('toggle-form-btn').addEventListener('click', showForm);
   document.getElementById('close-form-btn').addEventListener('click', hideForm);
+
+  document.getElementById('f-new-group-btn').addEventListener('click', () => {
+    document.getElementById('f-new-group-form').style.display = 'block';
+    document.getElementById('f-new-group-btn').style.display  = 'none';
+    document.getElementById('fg-name').focus();
+  });
+  document.getElementById('fg-cancel-btn').addEventListener('click', hideInlineGroupForm);
+  document.getElementById('fg-save-btn').addEventListener('click', () => {
+    const name  = document.getElementById('fg-name').value.trim();
+    const errEl = document.getElementById('fg-err-name');
+    errEl.style.display = name ? 'none' : 'block';
+    if (!name) return;
+    const g = {
+      id:    generateId(),
+      name,
+      notes:     document.getElementById('fg-notes').value.trim(),
+      createdAt: new Date().toISOString()
+    };
+    taskGroups.push(g);
+    saveGroups(taskGroups);
+    populateGroupSelects();
+    document.getElementById('f-group').value = g.id;
+    hideInlineGroupForm();
+  });
 
   // Show/hide date picker based on radio selection
   document.querySelectorAll('[name="due-type"]').forEach(r => {
