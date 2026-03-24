@@ -281,6 +281,63 @@
     ::-webkit-scrollbar-track { background: var(--black); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--yellow); }
+
+    /* ── Theme toggle button ── */
+    .theme-toggle {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 1.1rem;
+      padding: 6px 11px;
+      border-radius: 3px;
+      line-height: 1;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      font-family: inherit;
+    }
+    .theme-toggle:hover { border-color: var(--yellow); }
+
+    /* ── Light Mode ─────────────────────────────────────────────────────────── */
+    body.light {
+      --black:    #f0efe9;
+      --dark:     #ffffff;
+      --card:     #ffffff;
+      --border:   #ddddd5;
+      --text:     #1a1a1a;
+      --muted:    #606060;
+      --input-bg: #fafafa;
+    }
+
+    body.light header h1         { color: #1a1a1a; text-shadow: none; }
+    body.light header            { background: #fff; }
+    body.light .card             { box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+    body.light .card-title       { color: #1a1a1a; }
+    body.light th                { background: #f5f5ee; color: #1a1a1a; border-bottom-color: #c8b800; }
+    body.light #storage-warning  { background: #fff8d0; color: #6b5200; border-color: #c8b800; }
+    body.light .task-name        { color: #0a0a0a; }
+    body.light .dash             { color: #bbb; }
+    body.light .modal            { box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+    body.light .modal-title      { color: #1a1a1a; }
+
+    /* Outline buttons */
+    body.light .btn-outline               { color: #333; border-color: #ccc; }
+    body.light .btn-outline:hover         { border-color: #c8b800; color: #6b5a00; }
+    body.light .btn-outline.active        { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+    body.light .btn-outline[data-tab="trash"].active { background: var(--pink); border-color: var(--pink); color: #fff; }
+
+    /* Date picker icons: no inversion in light mode */
+    body.light input[type="date"]::-webkit-calendar-picker-indicator,
+    body.light input[type="datetime-local"]::-webkit-calendar-picker-indicator { filter: none; }
+
+    /* ── Row highlights — solid & clearly visible in light mode ── */
+    body.light tr.row-complete td        { background: #c8f5d8; }
+    body.light tr.row-complete:hover td  { background: #a8edbe; }
+    body.light tr.row-asap td           { background: #ffecd0; }
+    body.light tr.row-asap:hover td     { background: #ffdcaa; }
+    body.light tr:hover td              { background: #fffbd0; }
+    body.light tr.row-trash td          { background: #fcd8e8; color: #666; }
+    body.light tr.row-trash:hover td    { background: #f9bdd6; }
+    body.light #trash-section > div:first-child { background: #fde8f0; }
   </style>
 </head>
 <body>
@@ -335,9 +392,12 @@
   </div>
 </div>
 
-<header>
-  <h1>MY TASKS</h1>
-  <p>Local task manager &mdash; data stays in your browser</p>
+<header style="display:flex;align-items:center;justify-content:space-between;">
+  <div>
+    <h1>MY TASKS</h1>
+    <p>Local task manager &mdash; data stays in your browser</p>
+  </div>
+  <button class="theme-toggle" id="theme-toggle-btn" title="Toggle light / dark mode">☀</button>
 </header>
 
 <div id="storage-warning">
@@ -413,9 +473,9 @@
         <select id="month-history" title="Browse by month">
           <option value="">— Browse by Month —</option>
         </select>
-        <label style="font-size:0.82rem;font-weight:600;color:#444;">From</label>
+        <label style="font-size:0.82rem;font-weight:600;">From</label>
         <input type="date" id="f-from" style="width:150px;" />
-        <label style="font-size:0.82rem;font-weight:600;color:#444;">To</label>
+        <label style="font-size:0.82rem;font-weight:600;">To</label>
         <input type="date" id="f-to" style="width:150px;" />
         <button class="btn btn-outline btn-sm" id="this-month-btn">This Month</button>
       </div>
@@ -1066,6 +1126,20 @@ function attachTrashListeners() {
   document.getElementById('empty-trash-btn').addEventListener('click', emptyTrash);
 }
 
+// ── Theme Toggle ────────────────────────────────────────────────────────────
+function applyTheme(theme) {
+  const btn = document.getElementById('theme-toggle-btn');
+  if (theme === 'light') {
+    document.body.classList.add('light');
+    btn.textContent = '☽';
+    btn.title = 'Switch to dark mode';
+  } else {
+    document.body.classList.remove('light');
+    btn.textContent = '☀';
+    btn.title = 'Switch to light mode';
+  }
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   checkStorage();
@@ -1078,6 +1152,14 @@ document.addEventListener('DOMContentLoaded', () => {
   attachTableListener();
   attachTrashListeners();
   renderAll();
+
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  applyTheme(savedTheme);
+  document.getElementById('theme-toggle-btn').addEventListener('click', () => {
+    const next = document.body.classList.contains('light') ? 'dark' : 'light';
+    localStorage.setItem('theme', next);
+    applyTheme(next);
+  });
 });
 </script>
 </body>
