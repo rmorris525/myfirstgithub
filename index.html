@@ -21,6 +21,7 @@
       --text:    #f0f0f0;
       --muted:   #888888;
       --input-bg:#0f0f0f;
+      --surface: #111111;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -57,7 +58,9 @@
       display: none;
     }
 
-    main { max-width: 1100px; margin: 24px auto; padding: 0 16px 40px; }
+    main { max-width: 1400px; margin: 24px auto; padding: 0 16px 40px; }
+    #app-layout   { display: flex; align-items: flex-start; gap: 16px; }
+    #main-content { flex: 1; min-width: 0; }
 
     /* ── Cards ── */
     .card {
@@ -306,6 +309,7 @@
       --text:     #1a1a1a;
       --muted:    #606060;
       --input-bg: #fafafa;
+      --surface:  #f0f4ff;
     }
 
     body.light header h1         { color: #1a1a1a; text-shadow: none; }
@@ -364,6 +368,72 @@
     body.light tr.group-header-row td { background: #dde8f8; }
     body.light .group-header-name     { color: #1a1a1a; }
     body.light .group-badge           { border-color: #aac; color: #1a5cd4; }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    #group-sidebar {
+      width: 220px; flex-shrink: 0;
+      position: sticky; top: 24px;
+      max-height: calc(100vh - 48px); overflow-y: auto;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 4px; box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+      align-self: flex-start;
+    }
+    .sidebar-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px; border-bottom: 1px solid var(--border);
+    }
+    .sidebar-title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 900; font-size: 0.85rem; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--blue);
+    }
+    #sb-new-btn {
+      background: none; border: none; color: var(--blue);
+      font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0;
+    }
+    #sb-new-btn:hover { color: var(--cyan); }
+    #sb-new-form { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    #sb-new-form input { width: 100%; margin-bottom: 6px; }
+    #sb-list { list-style: none; margin: 0; padding: 4px 0; }
+    .sb-item {
+      display: flex; align-items: center; gap: 4px;
+      padding: 9px 14px; cursor: pointer; font-size: 0.88rem;
+      border-left: 3px solid transparent; color: var(--text);
+      transition: background 0.1s;
+    }
+    .sb-item:hover       { background: var(--dark); }
+    .sb-item--active     { border-left-color: var(--blue); font-weight: 600; color: var(--blue); }
+    .sb-count {
+      margin-left: auto; font-size: 0.72rem; color: var(--muted);
+      background: var(--dark); padding: 1px 7px; border-radius: 9px; flex-shrink: 0;
+    }
+    .sb-del {
+      margin-left: 4px; background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 0.8rem; opacity: 0;
+      transition: opacity 0.15s; flex-shrink: 0; line-height: 1;
+    }
+    .sb-item:hover .sb-del { opacity: 1; }
+    .sb-del:hover { color: var(--pink); }
+    .sb-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+    body.light #group-sidebar { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    body.light .sb-item:hover { background: #e8eef8; }
+    body.light .sb-count      { background: #dde6f5; }
+
+    @media (max-width: 820px) {
+      #app-layout    { flex-direction: column; }
+      #group-sidebar {
+        width: 100%; position: static; max-height: none;
+        overflow-x: auto; overflow-y: hidden;
+      }
+      #sb-list       { display: flex; overflow-x: auto; padding: 0; }
+      .sb-item       {
+        flex-shrink: 0; border-left: none;
+        border-bottom: 3px solid transparent; white-space: nowrap;
+      }
+      .sb-item--active { border-bottom-color: var(--blue); border-left-color: transparent; }
+      .sb-del          { opacity: 1; }
+    }
   </style>
 </head>
 <body>
@@ -434,34 +504,29 @@
   Storage unavailable — tasks will not persist after closing this tab.
 </div>
 
-<!-- ── Group Modal ── -->
-<div class="modal-backdrop" id="group-modal">
-  <div class="modal">
-    <div class="modal-title">Manage Groups</div>
-    <div id="group-list" style="margin-bottom:16px;min-height:24px;"></div>
-    <hr style="border-color:var(--border);margin-bottom:16px;" />
-    <div style="font-weight:600;font-size:0.9rem;margin-bottom:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Add New Group</div>
-    <form id="group-form" novalidate>
-      <div class="form-grid">
-        <div class="full">
-          <label for="g-name">Group Name *</label>
-          <input type="text" id="g-name" placeholder="e.g. AT&amp;T Joint Use Q1 2026" />
-          <div class="field-error" id="g-err-name">Group name is required.</div>
-        </div>
-        <div class="full">
-          <label for="g-notes">Notes</label>
-          <input type="text" id="g-notes" placeholder="Optional" />
-        </div>
-      </div>
-      <div style="margin-top:16px;display:flex;gap:10px;">
-        <button type="submit" class="btn btn-primary btn-sm">Add Group</button>
-        <button type="button" class="btn btn-outline btn-sm" id="close-group-modal-btn">Cancel</button>
-      </div>
-    </form>
-  </div>
-</div>
-
 <main>
+<div id="app-layout">
+
+  <!-- ── Group Sidebar ── -->
+  <aside id="group-sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Groups</span>
+      <button id="sb-new-btn" title="New group">+</button>
+    </div>
+    <div id="sb-new-form" style="display:none;padding:10px 12px;border-bottom:1px solid var(--border);">
+      <input id="sb-name" class="input" placeholder="Group name" style="width:100%;margin-bottom:6px;" />
+      <input id="sb-notes" class="input" placeholder="Notes (optional)" style="width:100%;margin-bottom:4px;" />
+      <div class="field-error" id="sb-err">Name required.</div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button id="sb-save" class="btn btn-primary btn-sm">Add</button>
+        <button id="sb-cancel" class="btn btn-outline btn-sm">✕</button>
+      </div>
+    </div>
+    <ul id="sb-list"></ul>
+  </aside>
+
+  <!-- ── Main Content ── -->
+  <div id="main-content">
 
   <!-- ── Add Task Form ── -->
   <div style="margin-bottom:16px;">
@@ -550,7 +615,6 @@
         <button class="btn btn-outline" data-tab="pending">Pending</button>
         <button class="btn btn-outline" data-tab="complete">Completed</button>
         <button class="btn btn-outline" data-tab="trash">Trash</button>
-        <button class="btn btn-outline btn-sm" id="groups-btn" style="margin-left:8px;">Groups</button>
       </div>
       <div id="date-range-section">
         <select id="month-history" title="Browse by month">
@@ -611,6 +675,8 @@
     </div>
   </div>
 
+  </div><!-- /#main-content -->
+</div><!-- /#app-layout -->
 </main>
 
 <script>
@@ -618,7 +684,7 @@
 let allTasks = [];
 let trashTasks = [];
 let taskGroups = [];
-let currentFilter = { status: 'all', fromDate: '', toDate: '' };
+let currentFilter = { status: 'all', fromDate: '', toDate: '', groupId: null };
 
 // ── Storage ────────────────────────────────────────────────────────────────
 function loadTasks() {
@@ -816,11 +882,42 @@ function filterTasks(tasks, filter) {
     });
   }
 
+  if (filter.groupId) {
+    result = result.filter(t => t.groupId === filter.groupId);
+  }
+
   return result;
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const list = document.getElementById('sb-list');
+  if (!list) return;
+  const allCount = allTasks.length;
+  const isAllActive = !currentFilter.groupId;
+
+  let html = `<li class="sb-item ${isAllActive ? 'sb-item--active' : ''}" data-gid="">
+    All Tasks <span class="sb-count">${allCount}</span>
+  </li>`;
+
+  if (taskGroups.length) {
+    html += '<li class="sb-divider"></li>';
+    taskGroups.forEach(g => {
+      const cnt = allTasks.filter(t => t.groupId === g.id).length;
+      const isActive = currentFilter.groupId === g.id;
+      html += `<li class="sb-item ${isActive ? 'sb-item--active' : ''}" data-gid="${g.id}">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escape(g.name)}</span>
+        <span class="sb-count">${cnt}</span>
+        <button class="sb-del" data-gid="${g.id}" title="Delete group">✕</button>
+      </li>`;
+    });
+  }
+
+  list.innerHTML = html;
+}
+
 function renderAll() {
+  renderSidebar();
   if (currentFilter.status === 'trash') {
     renderTrash();
     return;
@@ -873,7 +970,7 @@ function renderTasks(tasks) {
   }
 
   const isGroupedView = currentFilter.status === 'all' || currentFilter.status === 'pending';
-  const hasAnyGroups  = taskGroups.length > 0 && tasks.some(t => t.groupId);
+  const hasAnyGroups  = taskGroups.length > 0 && tasks.some(t => t.groupId) && !currentFilter.groupId;
 
   if (isGroupedView && hasAnyGroups) {
     const grouped = {};
@@ -1046,68 +1143,59 @@ function populateGroupSelects() {
   document.getElementById('e-group').innerHTML = opts;
 }
 
-function renderGroupList() {
-  const el = document.getElementById('group-list');
-  if (!taskGroups.length) {
-    el.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;margin:0;">No groups yet.</p>';
-    return;
-  }
-  el.innerHTML = taskGroups.map(g => {
-    const meta = g.notes ? escape(g.notes) : '';
-    return `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
-        <div>
-          <span style="font-weight:600;">${escape(g.name)}</span>
-          ${meta ? `<span style="color:var(--muted);font-size:0.8rem;margin-left:8px;">${meta}</span>` : ''}
-        </div>
-        <button class="btn btn-danger btn-sm" data-group-id="${g.id}" data-action="delete-group">Delete</button>
-      </div>`;
-  }).join('');
-}
-
 function deleteGroup(id) {
+  if (currentFilter.groupId === id) currentFilter.groupId = null;
   allTasks = allTasks.map(t => t.groupId === id ? { ...t, groupId: null } : t);
   saveTasks(allTasks);
   taskGroups = taskGroups.filter(g => g.id !== id);
   saveGroups(taskGroups);
   populateGroupSelects();
-  renderGroupList();
   renderAll();
 }
 
-function attachGroupModalListeners() {
-  document.getElementById('groups-btn').addEventListener('click', () => {
-    renderGroupList();
-    document.getElementById('group-modal').classList.add('open');
+function attachSidebarListeners() {
+  document.getElementById('sb-new-btn').addEventListener('click', () => {
+    document.getElementById('sb-new-form').style.display = 'block';
+    document.getElementById('sb-new-btn').style.display  = 'none';
+    document.getElementById('sb-name').focus();
   });
-  document.getElementById('close-group-modal-btn').addEventListener('click', () => {
-    document.getElementById('group-modal').classList.remove('open');
-  });
-  document.getElementById('group-modal').addEventListener('click', e => {
-    if (e.target === document.getElementById('group-modal'))
-      document.getElementById('group-modal').classList.remove('open');
-  });
-  document.getElementById('group-list').addEventListener('click', e => {
-    const btn = e.target.closest('[data-action="delete-group"]');
-    if (btn) deleteGroup(btn.dataset.groupId);
-  });
-  document.getElementById('group-form').addEventListener('submit', e => {
-    e.preventDefault();
-    const name  = document.getElementById('g-name').value.trim();
-    const errEl = document.getElementById('g-err-name');
-    errEl.style.display = name ? 'none' : 'block';
+
+  function hideSbForm() {
+    document.getElementById('sb-new-form').style.display = 'none';
+    document.getElementById('sb-new-btn').style.display  = '';
+    document.getElementById('sb-name').value  = '';
+    document.getElementById('sb-notes').value = '';
+    document.getElementById('sb-err').style.display = 'none';
+  }
+
+  document.getElementById('sb-cancel').addEventListener('click', hideSbForm);
+
+  document.getElementById('sb-save').addEventListener('click', () => {
+    const name = document.getElementById('sb-name').value.trim();
+    document.getElementById('sb-err').style.display = name ? 'none' : 'block';
     if (!name) return;
     const g = {
-      id:    generateId(),
+      id:        generateId(),
       name,
-      notes: document.getElementById('g-notes').value.trim(),
+      notes:     document.getElementById('sb-notes').value.trim(),
       createdAt: new Date().toISOString()
     };
     taskGroups.push(g);
     saveGroups(taskGroups);
     populateGroupSelects();
-    renderGroupList();
-    e.target.reset();
+    hideSbForm();
+    renderSidebar();
+  });
+
+  document.getElementById('sb-list').addEventListener('click', e => {
+    const del  = e.target.closest('.sb-del');
+    const item = e.target.closest('.sb-item');
+    if (del) { deleteGroup(del.dataset.gid); return; }
+    if (item) {
+      currentFilter.groupId = item.dataset.gid || null;
+      renderSidebar();
+      renderAll();
+    }
   });
 }
 
@@ -1392,7 +1480,7 @@ document.addEventListener('DOMContentLoaded', () => {
   attachEditModal();
   attachTableListener();
   attachTrashListeners();
-  attachGroupModalListeners();
+  attachSidebarListeners();
   renderAll();
 
   const savedTheme = localStorage.getItem('theme') || 'dark';
