@@ -145,6 +145,8 @@
       vertical-align: top;
     }
     tr.row-complete td { background: #f0fdf4; }
+    tr.row-asap td { background: #fff7ed; }
+    tr.row-asap:hover td { background: #ffedd5; }
     tr:hover td { background: #f5f9ff; }
     tr.row-complete:hover td { background: #dcfce7; }
     .task-name { font-weight: 600; }
@@ -510,7 +512,7 @@ function renderTasks(tasks) {
       : `<button class="btn btn-success btn-sm" data-id="${t.id}" data-action="complete">Complete</button>`;
 
     return `
-      <tr class="${isComplete ? 'row-complete' : ''}">
+      <tr class="${isComplete ? 'row-complete' : t.dueDate === 'ASAP' ? 'row-asap' : ''}">
         <td>${nameCell}</td>
         <td>${escape(formatDate(t.dueDate))}</td>
         <td>${escape(t.scheduledDate ? formatDateTime(t.scheduledDate) : '—')}</td>
@@ -639,7 +641,7 @@ function attachFormListener() {
         pendingAttachment = { name: file.name, content: ev.target.result };
         hint.textContent = `Selected: ${file.name}`;
       };
-      reader.readAsText(file);
+      reader.readAsDataURL(file);
     } else {
       pendingAttachment = null;
       hint.textContent = '';
@@ -751,13 +753,10 @@ function attachFilterListeners() {
 function downloadAttachment(id) {
   const task = allTasks.find(t => t.id === id);
   if (!task || !task.emailAttachment) return;
-  const blob = new Blob([task.emailAttachment.content], { type: 'message/rfc822' });
-  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
+  a.href = task.emailAttachment.content; // data URL preserves binary
   a.download = task.emailAttachment.name;
   a.click();
-  URL.revokeObjectURL(url);
 }
 
 // ── Edit Modal ─────────────────────────────────────────────────────────────
@@ -811,7 +810,7 @@ function attachEditModal() {
         editPendingAttachment = { name: file.name, content: ev.target.result };
         hint.textContent = `Selected: ${file.name}`;
       };
-      reader.readAsText(file);
+      reader.readAsDataURL(file);
     } else {
       editPendingAttachment = null;
     }
