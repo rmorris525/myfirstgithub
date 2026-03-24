@@ -157,11 +157,7 @@
     .due-options { display: flex; gap: 14px; margin-top: 4px; }
     .due-opt { display: flex; align-items: center; gap: 5px; font-size: 0.875rem; cursor: pointer; font-weight: normal; }
     .due-opt input[type="radio"] { cursor: pointer; }
-    .task-attach { margin-top: 4px; font-size: 0.8rem; color: #555; display: flex; align-items: center; gap: 4px; }
-    .attach-icon { font-size: 0.9rem; }
-    .btn-link { background: none; border: none; padding: 0; color: #2563eb; cursor: pointer; font-size: 0.8rem; text-decoration: underline; font-family: inherit; }
-    .btn-link:hover { color: #1d4ed8; }
-    input[type="file"] { font-size: 0.875rem; }
+    .task-email-ref { margin-top: 3px; font-size: 0.78rem; color: #6b7280; }
     .empty-state {
       text-align: center;
       padding: 40px 0;
@@ -225,10 +221,13 @@
           <input type="text" id="e-collab" placeholder="Alice, Bob, Charlie" />
           <div class="field-hint">Separate names with commas</div>
         </div>
-        <div class="full">
-          <label for="e-email-attach">Replace Email Attachment</label>
-          <input type="file" id="e-email-attach" accept=".eml,.msg,.txt" />
-          <div class="field-hint" id="e-email-attach-name"></div>
+        <div>
+          <label for="e-email-from">Email From</label>
+          <input type="text" id="e-email-from" placeholder="e.g. john@example.com" />
+        </div>
+        <div>
+          <label for="e-email-subject">Email Subject</label>
+          <input type="text" id="e-email-subject" placeholder="e.g. Re: Project Update" />
         </div>
       </div>
       <div class="modal-actions">
@@ -282,10 +281,13 @@
           <input type="text" id="f-collab" placeholder="Alice, Bob, Charlie" />
           <div class="field-hint">Separate names with commas</div>
         </div>
-        <div class="full">
-          <label for="f-email-attach">Email Attachment</label>
-          <input type="file" id="f-email-attach" accept=".eml,.msg,.txt" />
-          <div class="field-hint" id="f-email-attach-name"></div>
+        <div>
+          <label for="f-email-from">Email From</label>
+          <input type="text" id="f-email-from" placeholder="e.g. john@example.com" />
+        </div>
+        <div>
+          <label for="f-email-subject">Email Subject</label>
+          <input type="text" id="f-email-subject" placeholder="e.g. Re: Project Update" />
         </div>
       </div>
       <div style="margin-top:18px;">
@@ -345,7 +347,6 @@
 // ── State ──────────────────────────────────────────────────────────────────
 let allTasks = [];
 let currentFilter = { status: 'all', fromDate: '', toDate: '' };
-let pendingAttachment = null; // { name, content } while form is open
 
 // ── Storage ────────────────────────────────────────────────────────────────
 function loadTasks() {
@@ -380,7 +381,7 @@ function generateId() {
 }
 
 // ── Task CRUD ──────────────────────────────────────────────────────────────
-function createTask({ name, description, dueDate, scheduledDate, collaborators, emailAttachment }) {
+function createTask({ name, description, dueDate, scheduledDate, collaborators, emailFrom, emailSubject }) {
   return {
     id: generateId(),
     name,
@@ -388,7 +389,8 @@ function createTask({ name, description, dueDate, scheduledDate, collaborators, 
     dueDate,
     scheduledDate,
     collaborators,
-    emailAttachment: emailAttachment || null,
+    emailFrom:    emailFrom    || '',
+    emailSubject: emailSubject || '',
     addedAt: new Date().toISOString(),
     completedAt: null,
     status: 'pending'
@@ -500,12 +502,12 @@ function renderTasks(tasks) {
 
   tbody.innerHTML = tasks.map(t => {
     const isComplete = t.status === 'complete';
-    const attachHtml = t.emailAttachment
-      ? `<div class="task-attach"><span class="attach-icon">📎</span><button class="btn-link" data-id="${t.id}" data-action="download">${escape(t.emailAttachment.name)}</button></div>`
+    const emailRef = (t.emailFrom || t.emailSubject)
+      ? `<div class="task-email-ref">✉ ${[t.emailFrom, t.emailSubject].filter(Boolean).join(' — ')}</div>`
       : '';
     const nameCell = `<div class="task-name">${escape(t.name)}</div>` +
       (t.description ? `<div class="task-desc">${escape(t.description)}</div>` : '') +
-      attachHtml;
+      emailRef;
     const collabs = formatCollaborators(t.collaborators);
     const actions = isComplete
       ? `<button class="btn btn-warning btn-sm" data-id="${t.id}" data-action="undo">Undo</button>`
@@ -631,23 +633,6 @@ function firstOfMonthStr() {
 
 // ── Event Listeners ────────────────────────────────────────────────────────
 function attachFormListener() {
-  // Preview selected file name
-  document.getElementById('f-email-attach').addEventListener('change', e => {
-    const file = e.target.files[0];
-    const hint = document.getElementById('f-email-attach-name');
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = ev => {
-        pendingAttachment = { name: file.name, content: ev.target.result };
-        hint.textContent = `Selected: ${file.name}`;
-      };
-      reader.readAsDataURL(file);
-    } else {
-      pendingAttachment = null;
-      hint.textContent = '';
-    }
-  });
-
   // Show/hide date picker based on radio selection
   document.querySelectorAll('[name="due-type"]').forEach(r => {
     r.addEventListener('change', () => {
@@ -670,19 +655,18 @@ function attachFormListener() {
 
     const task = createTask({
       name,
-      description:     document.getElementById('f-desc').value.trim(),
+      description:  document.getElementById('f-desc').value.trim(),
       dueDate,
-      scheduledDate:   document.getElementById('f-scheduled').value,
-      collaborators:   parseCollaborators(document.getElementById('f-collab').value),
-      emailAttachment: pendingAttachment
+      scheduledDate: document.getElementById('f-scheduled').value,
+      collaborators: parseCollaborators(document.getElementById('f-collab').value),
+      emailFrom:    document.getElementById('f-email-from').value.trim(),
+      emailSubject: document.getElementById('f-email-subject').value.trim(),
     });
 
     allTasks.push(task);
     saveTasks(allTasks);
     e.target.reset();
     document.getElementById('f-due').style.display = 'none';
-    document.getElementById('f-email-attach-name').textContent = '';
-    pendingAttachment = null;
     renderAll();
   });
 }
@@ -750,49 +734,27 @@ function attachFilterListeners() {
   document.getElementById('copy-btn').addEventListener('click', copyForEmail);
 }
 
-function downloadAttachment(id) {
-  const task = allTasks.find(t => t.id === id);
-  if (!task || !task.emailAttachment) return;
-  // fetch() converts the data URL to a real Blob, bypassing browser data-URL download blocks
-  fetch(task.emailAttachment.content)
-    .then(r => r.blob())
-    .then(blob => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = task.emailAttachment.name;
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-}
-
 // ── Edit Modal ─────────────────────────────────────────────────────────────
 let editingId = null;
-let editPendingAttachment = null;
 
 function openEditModal(id) {
   const task = allTasks.find(t => t.id === id);
   if (!task) return;
   editingId = id;
-  editPendingAttachment = null;
 
-  document.getElementById('e-name').value        = task.name;
-  document.getElementById('e-desc').value        = task.description || '';
-  document.getElementById('e-scheduled').value   = task.scheduledDate || '';
-  document.getElementById('e-collab').value      = (task.collaborators || []).join(', ');
-  document.getElementById('e-email-attach').value = '';
+  document.getElementById('e-name').value         = task.name;
+  document.getElementById('e-desc').value         = task.description || '';
+  document.getElementById('e-scheduled').value    = task.scheduledDate || '';
+  document.getElementById('e-collab').value       = (task.collaborators || []).join(', ');
+  document.getElementById('e-email-from').value   = task.emailFrom    || '';
+  document.getElementById('e-email-subject').value= task.emailSubject || '';
   document.getElementById('e-err-name').style.display = 'none';
 
-  // Due date radios
   const dueType = task.dueDate === 'ASAP' ? 'asap' : task.dueDate ? 'date' : 'none';
   document.querySelector(`[name="e-due-type"][value="${dueType}"]`).checked = true;
   const duePicker = document.getElementById('e-due');
   duePicker.style.display = dueType === 'date' ? 'block' : 'none';
   duePicker.value = dueType === 'date' ? task.dueDate : '';
-
-  // Attachment hint
-  const hint = document.getElementById('e-email-attach-name');
-  hint.textContent = task.emailAttachment ? `Current: ${task.emailAttachment.name}` : '';
 
   document.getElementById('edit-modal').classList.add('open');
   document.getElementById('e-name').focus();
@@ -805,22 +767,6 @@ function attachEditModal() {
       document.getElementById('e-due').style.display =
         document.querySelector('[name="e-due-type"]:checked').value === 'date' ? 'block' : 'none';
     });
-  });
-
-  // File input
-  document.getElementById('e-email-attach').addEventListener('change', e => {
-    const file = e.target.files[0];
-    const hint = document.getElementById('e-email-attach-name');
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = ev => {
-        editPendingAttachment = { name: file.name, content: ev.target.result };
-        hint.textContent = `Selected: ${file.name}`;
-      };
-      reader.readAsDataURL(file);
-    } else {
-      editPendingAttachment = null;
-    }
   });
 
   // Cancel
@@ -849,11 +795,12 @@ function attachEditModal() {
       return {
         ...t,
         name,
-        description:     document.getElementById('e-desc').value.trim(),
+        description:  document.getElementById('e-desc').value.trim(),
         dueDate,
-        scheduledDate:   document.getElementById('e-scheduled').value,
-        collaborators:   parseCollaborators(document.getElementById('e-collab').value),
-        emailAttachment: editPendingAttachment !== null ? editPendingAttachment : t.emailAttachment,
+        scheduledDate: document.getElementById('e-scheduled').value,
+        collaborators: parseCollaborators(document.getElementById('e-collab').value),
+        emailFrom:    document.getElementById('e-email-from').value.trim(),
+        emailSubject: document.getElementById('e-email-subject').value.trim(),
       };
     });
 
@@ -872,7 +819,6 @@ function attachTableListener() {
     else if (action === 'undo')     uncompleteTask(id);
     else if (action === 'delete')   deleteTask(id);
     else if (action === 'edit')     openEditModal(id);
-    else if (action === 'download') downloadAttachment(id);
   });
 }
 
