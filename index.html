@@ -102,6 +102,8 @@
     .date-range label { margin-bottom: 0; white-space: nowrap; }
     .date-range input { width: 150px; }
     #date-range-section { display: none; align-items: center; gap: 8px; flex-wrap: wrap; }
+    #month-history { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 5px; font-size: 0.875rem; font-family: inherit; background: #fafafa; cursor: pointer; }
+    #month-history:focus { outline: none; border-color: #2563eb; }
     #copy-btn-wrap { display: none; }
 
     .copy-confirm {
@@ -220,6 +222,9 @@
         <button class="btn btn-outline" data-tab="complete">Completed</button>
       </div>
       <div id="date-range-section">
+        <select id="month-history" title="Browse by month">
+          <option value="">— Browse by Month —</option>
+        </select>
         <label style="font-size:0.82rem;font-weight:600;color:#444;">From</label>
         <input type="date" id="f-from" style="width:150px;" />
         <label style="font-size:0.82rem;font-weight:600;color:#444;">To</label>
@@ -393,6 +398,7 @@ function filterTasks(tasks, filter) {
 function renderAll() {
   const filtered = filterTasks(allTasks, currentFilter);
   renderTasks(filtered);
+  if (currentFilter.status === 'complete') renderMonthDropdown();
 }
 
 function renderTasks(tasks) {
@@ -429,6 +435,30 @@ function renderTasks(tasks) {
   }).join('');
 }
 
+// ── Month History ──────────────────────────────────────────────────────────
+function getCompletedMonths() {
+  const seen = new Set();
+  allTasks
+    .filter(t => t.status === 'complete' && t.completedAt)
+    .forEach(t => {
+      const d = new Date(t.completedAt);
+      seen.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+    });
+  return Array.from(seen).sort((a, b) => b.localeCompare(a)); // newest first
+}
+
+function renderMonthDropdown() {
+  const sel = document.getElementById('month-history');
+  const current = sel.value;
+  const months = getCompletedMonths();
+  sel.innerHTML = '<option value="">— Browse by Month —</option>' +
+    months.map(ym => {
+      const [y, m] = ym.split('-');
+      const label = new Date(Number(y), Number(m)-1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      return `<option value="${ym}" ${ym === current ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+}
+
 // ── Copy for Email ─────────────────────────────────────────────────────────
 function copyForEmail() {
   const filtered = filterTasks(allTasks, currentFilter);
@@ -442,7 +472,7 @@ function copyForEmail() {
     const isToday = currentFilter.toDate === todayStr();
     const sameMonth = from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
     if (isFirstOfMonth && isToday && sameMonth) {
-      rangeLabel = from.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      rangeLabel = from.toLocaleDateString('en-US', { month: 'long' });
     } else {
       rangeLabel = formatDate(currentFilter.fromDate) + ' – ' + formatDate(currentFilter.toDate);
     }
@@ -546,13 +576,36 @@ function attachFilterListeners() {
     });
   });
 
+  // Month history dropdown
+  document.getElementById('month-history').addEventListener('change', e => {
+    const val = e.target.value;
+    if (!val) {
+      currentFilter.fromDate = '';
+      currentFilter.toDate = '';
+      document.getElementById('f-from').value = '';
+      document.getElementById('f-to').value = '';
+    } else {
+      const [y, m] = val.split('-').map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      const from = `${y}-${String(m).padStart(2,'0')}-01`;
+      const to   = `${y}-${String(m).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+      currentFilter.fromDate = from;
+      currentFilter.toDate   = to;
+      document.getElementById('f-from').value = from;
+      document.getElementById('f-to').value   = to;
+    }
+    renderAll();
+  });
+
   // Date range
   document.getElementById('f-from').addEventListener('change', e => {
     currentFilter.fromDate = e.target.value;
+    document.getElementById('month-history').value = '';
     renderAll();
   });
   document.getElementById('f-to').addEventListener('change', e => {
     currentFilter.toDate = e.target.value;
+    document.getElementById('month-history').value = '';
     renderAll();
   });
 
@@ -564,6 +617,7 @@ function attachFilterListeners() {
     currentFilter.toDate   = to;
     document.getElementById('f-from').value = from;
     document.getElementById('f-to').value   = to;
+    document.getElementById('month-history').value = '';
     renderAll();
   });
 
