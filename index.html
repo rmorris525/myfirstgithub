@@ -753,10 +753,17 @@ function attachFilterListeners() {
 function downloadAttachment(id) {
   const task = allTasks.find(t => t.id === id);
   if (!task || !task.emailAttachment) return;
-  const a = document.createElement('a');
-  a.href = task.emailAttachment.content; // data URL preserves binary
-  a.download = task.emailAttachment.name;
-  a.click();
+  // fetch() converts the data URL to a real Blob, bypassing browser data-URL download blocks
+  fetch(task.emailAttachment.content)
+    .then(r => r.blob())
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = task.emailAttachment.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
 }
 
 // ── Edit Modal ─────────────────────────────────────────────────────────────
