@@ -471,7 +471,8 @@ function copyForEmail() {
     const isFirstOfMonth = from.getDate() === 1;
     const isToday = currentFilter.toDate === todayStr();
     const sameMonth = from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
-    if (isFirstOfMonth && isToday && sameMonth) {
+    const isLastOfMonth = to.getDate() === new Date(to.getFullYear(), to.getMonth()+1, 0).getDate();
+    if (isFirstOfMonth && sameMonth && (isToday || isLastOfMonth)) {
       rangeLabel = from.toLocaleDateString('en-US', { month: 'long' });
     } else {
       rangeLabel = formatDate(currentFilter.fromDate) + ' – ' + formatDate(currentFilter.toDate);
