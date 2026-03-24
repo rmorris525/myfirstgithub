@@ -1152,6 +1152,9 @@ function populateGroupSelects() {
 }
 
 function deleteGroup(id) {
+  const group = taskGroups.find(g => g.id === id);
+  const name  = group ? group.name : 'this group';
+  if (!confirm(`Delete "${name}"?\n\nTasks in this group will become ungrouped.`)) return;
   if (currentFilter.groupId === id) currentFilter.groupId = null;
   collapsedGroups.delete(id);
   allTasks = allTasks.map(t => t.groupId === id ? { ...t, groupId: null } : t);
