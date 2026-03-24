@@ -453,16 +453,13 @@ function copyForEmail() {
   }
 
   const lines = [
-    `Completed Tasks — ${rangeLabel}`,
+    `${rangeLabel} Completed Tasks`,
     ``,
   ];
 
   filtered.forEach(t => {
     lines.push(`• ${t.name}`);
   });
-
-  lines.push(``);
-  lines.push(`---`);
 
   const text = lines.join('\n');
 
