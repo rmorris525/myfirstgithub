@@ -152,6 +152,11 @@
     .dash { color: #bbb; }
     .action-btns { display: flex; gap: 6px; flex-wrap: nowrap; }
 
+    .task-attach { margin-top: 4px; font-size: 0.8rem; color: #555; display: flex; align-items: center; gap: 4px; }
+    .attach-icon { font-size: 0.9rem; }
+    .btn-link { background: none; border: none; padding: 0; color: #2563eb; cursor: pointer; font-size: 0.8rem; text-decoration: underline; font-family: inherit; }
+    .btn-link:hover { color: #1d4ed8; }
+    input[type="file"] { font-size: 0.875rem; }
     .empty-state {
       text-align: center;
       padding: 40px 0;
@@ -205,6 +210,11 @@
           <label for="f-collab">Collaborators</label>
           <input type="text" id="f-collab" placeholder="Alice, Bob, Charlie" />
           <div class="field-hint">Separate names with commas</div>
+        </div>
+        <div class="full">
+          <label for="f-email-attach">Email Attachment</label>
+          <input type="file" id="f-email-attach" accept=".eml,.msg,.txt" />
+          <div class="field-hint" id="f-email-attach-name"></div>
         </div>
       </div>
       <div style="margin-top:18px;">
@@ -264,6 +274,7 @@
 // ── State ──────────────────────────────────────────────────────────────────
 let allTasks = [];
 let currentFilter = { status: 'all', fromDate: '', toDate: '' };
+let pendingAttachment = null; // { name, content } while form is open
 
 // ── Storage ────────────────────────────────────────────────────────────────
 function loadTasks() {
@@ -298,7 +309,7 @@ function generateId() {
 }
 
 // ── Task CRUD ──────────────────────────────────────────────────────────────
-function createTask({ name, description, dueDate, scheduledDate, collaborators }) {
+function createTask({ name, description, dueDate, scheduledDate, collaborators, emailAttachment }) {
   return {
     id: generateId(),
     name,
@@ -306,6 +317,7 @@ function createTask({ name, description, dueDate, scheduledDate, collaborators }
     dueDate,
     scheduledDate,
     collaborators,
+    emailAttachment: emailAttachment || null,
     addedAt: new Date().toISOString(),
     completedAt: null,
     status: 'pending'
@@ -410,8 +422,12 @@ function renderTasks(tasks) {
 
   tbody.innerHTML = tasks.map(t => {
     const isComplete = t.status === 'complete';
+    const attachHtml = t.emailAttachment
+      ? `<div class="task-attach"><span class="attach-icon">📎</span><button class="btn-link" data-id="${t.id}" data-action="download">${escape(t.emailAttachment.name)}</button></div>`
+      : '';
     const nameCell = `<div class="task-name">${escape(t.name)}</div>` +
-      (t.description ? `<div class="task-desc">${escape(t.description)}</div>` : '');
+      (t.description ? `<div class="task-desc">${escape(t.description)}</div>` : '') +
+      attachHtml;
     const collabs = formatCollaborators(t.collaborators);
     const actions = isComplete
       ? `<button class="btn btn-warning btn-sm" data-id="${t.id}" data-action="undo">Undo</button>`
@@ -536,11 +552,27 @@ function firstOfMonthStr() {
 
 // ── Event Listeners ────────────────────────────────────────────────────────
 function attachFormListener() {
+  // Preview selected file name
+  document.getElementById('f-email-attach').addEventListener('change', e => {
+    const file = e.target.files[0];
+    const hint = document.getElementById('f-email-attach-name');
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        pendingAttachment = { name: file.name, content: ev.target.result };
+        hint.textContent = `Selected: ${file.name}`;
+      };
+      reader.readAsText(file);
+    } else {
+      pendingAttachment = null;
+      hint.textContent = '';
+    }
+  });
+
   document.getElementById('task-form').addEventListener('submit', e => {
     e.preventDefault();
     const name = document.getElementById('f-name').value.trim();
     const due  = document.getElementById('f-due').value;
-    let valid = true;
 
     const errName = document.getElementById('err-name');
     const errDue  = document.getElementById('err-due');
@@ -550,15 +582,18 @@ function attachFormListener() {
 
     const task = createTask({
       name,
-      description:   document.getElementById('f-desc').value.trim(),
-      dueDate:       due,
-      scheduledDate: document.getElementById('f-scheduled').value,
-      collaborators: parseCollaborators(document.getElementById('f-collab').value)
+      description:     document.getElementById('f-desc').value.trim(),
+      dueDate:         due,
+      scheduledDate:   document.getElementById('f-scheduled').value,
+      collaborators:   parseCollaborators(document.getElementById('f-collab').value),
+      emailAttachment: pendingAttachment
     });
 
     allTasks.push(task);
     saveTasks(allTasks);
     e.target.reset();
+    document.getElementById('f-email-attach-name').textContent = '';
+    pendingAttachment = null;
     renderAll();
   });
 }
@@ -626,14 +661,27 @@ function attachFilterListeners() {
   document.getElementById('copy-btn').addEventListener('click', copyForEmail);
 }
 
+function downloadAttachment(id) {
+  const task = allTasks.find(t => t.id === id);
+  if (!task || !task.emailAttachment) return;
+  const blob = new Blob([task.emailAttachment.content], { type: 'message/rfc822' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = task.emailAttachment.name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function attachTableListener() {
   document.getElementById('task-tbody').addEventListener('click', e => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const { id, action } = btn.dataset;
     if (action === 'complete') completeTask(id);
-    else if (action === 'undo')   uncompleteTask(id);
-    else if (action === 'delete') deleteTask(id);
+    else if (action === 'undo')     uncompleteTask(id);
+    else if (action === 'delete')   deleteTask(id);
+    else if (action === 'download') downloadAttachment(id);
   });
 }
 
