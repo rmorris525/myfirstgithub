@@ -171,9 +171,71 @@
       .form-grid { grid-template-columns: 1fr; }
       .form-grid .full { grid-column: 1; }
     }
+
+    /* ── Edit Modal ── */
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: #fff; border-radius: 10px; padding: 28px 32px;
+      width: min(560px, 95vw); max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
   </style>
 </head>
 <body>
+
+<!-- ── Edit Modal ── -->
+<div class="modal-backdrop" id="edit-modal">
+  <div class="modal">
+    <div class="modal-title">Edit Task</div>
+    <form id="edit-form" novalidate>
+      <div class="form-grid">
+        <div class="full">
+          <label for="e-name">Task Name *</label>
+          <input type="text" id="e-name" placeholder="What needs to be done?" />
+          <div class="field-error" id="e-err-name">Task name is required.</div>
+        </div>
+        <div class="full">
+          <label for="e-desc">Description / Notes</label>
+          <textarea id="e-desc" placeholder="Optional details…"></textarea>
+        </div>
+        <div>
+          <label>Due Date</label>
+          <div class="due-options">
+            <label class="due-opt"><input type="radio" name="e-due-type" value="none" /> None</label>
+            <label class="due-opt"><input type="radio" name="e-due-type" value="asap" /> ASAP</label>
+            <label class="due-opt"><input type="radio" name="e-due-type" value="date" /> Pick a date</label>
+          </div>
+          <input type="date" id="e-due" style="display:none;margin-top:6px;" />
+        </div>
+        <div>
+          <label for="e-scheduled">Scheduled Date &amp; Time</label>
+          <input type="datetime-local" id="e-scheduled" />
+        </div>
+        <div class="full">
+          <label for="e-collab">Collaborators</label>
+          <input type="text" id="e-collab" placeholder="Alice, Bob, Charlie" />
+          <div class="field-hint">Separate names with commas</div>
+        </div>
+        <div class="full">
+          <label for="e-email-attach">Replace Email Attachment</label>
+          <input type="file" id="e-email-attach" accept=".eml,.msg,.txt" />
+          <div class="field-hint" id="e-email-attach-name"></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="edit-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <header>
   <h1>My Tasks</h1>
@@ -458,6 +520,7 @@ function renderTasks(tasks) {
         <td>
           <div class="action-btns">
             ${actions}
+            <button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="edit">Edit</button>
             <button class="btn btn-danger btn-sm" data-id="${t.id}" data-action="delete">Delete</button>
           </div>
         </td>
@@ -697,6 +760,103 @@ function downloadAttachment(id) {
   URL.revokeObjectURL(url);
 }
 
+// ── Edit Modal ─────────────────────────────────────────────────────────────
+let editingId = null;
+let editPendingAttachment = null;
+
+function openEditModal(id) {
+  const task = allTasks.find(t => t.id === id);
+  if (!task) return;
+  editingId = id;
+  editPendingAttachment = null;
+
+  document.getElementById('e-name').value        = task.name;
+  document.getElementById('e-desc').value        = task.description || '';
+  document.getElementById('e-scheduled').value   = task.scheduledDate || '';
+  document.getElementById('e-collab').value      = (task.collaborators || []).join(', ');
+  document.getElementById('e-email-attach').value = '';
+  document.getElementById('e-err-name').style.display = 'none';
+
+  // Due date radios
+  const dueType = task.dueDate === 'ASAP' ? 'asap' : task.dueDate ? 'date' : 'none';
+  document.querySelector(`[name="e-due-type"][value="${dueType}"]`).checked = true;
+  const duePicker = document.getElementById('e-due');
+  duePicker.style.display = dueType === 'date' ? 'block' : 'none';
+  duePicker.value = dueType === 'date' ? task.dueDate : '';
+
+  // Attachment hint
+  const hint = document.getElementById('e-email-attach-name');
+  hint.textContent = task.emailAttachment ? `Current: ${task.emailAttachment.name}` : '';
+
+  document.getElementById('edit-modal').classList.add('open');
+  document.getElementById('e-name').focus();
+}
+
+function attachEditModal() {
+  // Due date radio toggle
+  document.querySelectorAll('[name="e-due-type"]').forEach(r => {
+    r.addEventListener('change', () => {
+      document.getElementById('e-due').style.display =
+        document.querySelector('[name="e-due-type"]:checked').value === 'date' ? 'block' : 'none';
+    });
+  });
+
+  // File input
+  document.getElementById('e-email-attach').addEventListener('change', e => {
+    const file = e.target.files[0];
+    const hint = document.getElementById('e-email-attach-name');
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        editPendingAttachment = { name: file.name, content: ev.target.result };
+        hint.textContent = `Selected: ${file.name}`;
+      };
+      reader.readAsText(file);
+    } else {
+      editPendingAttachment = null;
+    }
+  });
+
+  // Cancel
+  document.getElementById('edit-cancel').addEventListener('click', () => {
+    document.getElementById('edit-modal').classList.remove('open');
+  });
+  document.getElementById('edit-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('edit-modal'))
+      document.getElementById('edit-modal').classList.remove('open');
+  });
+
+  // Save
+  document.getElementById('edit-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = document.getElementById('e-name').value.trim();
+    document.getElementById('e-err-name').style.display = name ? 'none' : 'block';
+    if (!name) return;
+
+    const dueType = document.querySelector('[name="e-due-type"]:checked').value;
+    const dueDate = dueType === 'asap' ? 'ASAP'
+                  : dueType === 'date' ? document.getElementById('e-due').value
+                  : '';
+
+    allTasks = allTasks.map(t => {
+      if (t.id !== editingId) return t;
+      return {
+        ...t,
+        name,
+        description:     document.getElementById('e-desc').value.trim(),
+        dueDate,
+        scheduledDate:   document.getElementById('e-scheduled').value,
+        collaborators:   parseCollaborators(document.getElementById('e-collab').value),
+        emailAttachment: editPendingAttachment !== null ? editPendingAttachment : t.emailAttachment,
+      };
+    });
+
+    saveTasks(allTasks);
+    document.getElementById('edit-modal').classList.remove('open');
+    renderAll();
+  });
+}
+
 function attachTableListener() {
   document.getElementById('task-tbody').addEventListener('click', e => {
     const btn = e.target.closest('[data-action]');
@@ -705,6 +865,7 @@ function attachTableListener() {
     if (action === 'complete') completeTask(id);
     else if (action === 'undo')     uncompleteTask(id);
     else if (action === 'delete')   deleteTask(id);
+    else if (action === 'edit')     openEditModal(id);
     else if (action === 'download') downloadAttachment(id);
   });
 }
@@ -715,6 +876,7 @@ document.addEventListener('DOMContentLoaded', () => {
   allTasks = loadTasks();
   attachFormListener();
   attachFilterListeners();
+  attachEditModal();
   attachTableListener();
   renderAll();
 });
