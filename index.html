@@ -708,8 +708,9 @@ let allTasks = [];
 let trashTasks = [];
 let taskGroups = [];
 let currentFilter   = { status: 'all', fromDate: '', toDate: '', groupId: null };
-let collapsedGroups = new Set(); // group ids collapsed in All Tasks view; '__ungrouped__' for Ungrouped
-let allSubtasks = {};
+let collapsedGroups  = new Set(); // group ids collapsed in All Tasks view; '__ungrouped__' for Ungrouped
+let allSubtasks      = {};
+let expandedSubtasks = new Set(); // task ids whose subtask panel is open
 
 // ── Storage ────────────────────────────────────────────────────────────────
 function loadTasks() {
@@ -983,6 +984,9 @@ function taskRow(t, showGroupBadge) {
   const actions = isComplete
     ? `<button class="btn btn-warning btn-sm" data-id="${t.id}" data-action="undo">Undo</button>`
     : `<button class="btn btn-success btn-sm" data-id="${t.id}" data-action="complete">Complete</button>`;
+  const isExpanded = expandedSubtasks.has(t.id);
+  const toggleArrow = isExpanded ? '▼' : '▶';
+  const subtaskLabel = subs.length ? `${toggleArrow} ${subs.length} subtask${subs.length !== 1 ? 's' : ''}` : `${toggleArrow} Subtasks`;
   const mainRow = `
     <tr class="${isComplete ? 'row-complete' : t.dueDate === 'ASAP' ? 'row-asap' : ''}">
       <td>${nameCell}</td>
@@ -996,9 +1000,11 @@ function taskRow(t, showGroupBadge) {
           ${actions}
           <button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="edit">Edit</button>
           <button class="btn btn-danger btn-sm" data-id="${t.id}" data-action="delete">Delete</button>
+          <button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="toggle-subtasks" title="Toggle subtasks" style="font-size:0.78rem;">${subtaskLabel}</button>
         </div>
       </td>
     </tr>`;
+  if (!isExpanded) return mainRow;
   const subsHtml = subs.map(s => `<div class="subtask-item">
       <input type="checkbox" data-taskid="${t.id}" data-subtaskid="${s.id}" ${s.done ? 'checked' : ''} />
       <span class="subtask-text ${s.done ? 'done' : ''}">${escape(s.text)}</span>
@@ -1551,10 +1557,15 @@ function attachTableListener() {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const { id, action } = btn.dataset;
-    if (action === 'complete')   completeTask(id);
-    else if (action === 'undo')    uncompleteTask(id);
-    else if (action === 'delete')  deleteTask(id);
-    else if (action === 'edit')    openEditModal(id);
+    if (action === 'complete')        completeTask(id);
+    else if (action === 'undo')           uncompleteTask(id);
+    else if (action === 'delete')         deleteTask(id);
+    else if (action === 'edit')           openEditModal(id);
+    else if (action === 'toggle-subtasks') {
+      if (expandedSubtasks.has(id)) expandedSubtasks.delete(id);
+      else expandedSubtasks.add(id);
+      renderAll();
+    }
   });
 
   // Subtask checkbox toggle
