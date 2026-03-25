@@ -369,6 +369,25 @@
     tr.group-header-row:hover td { filter: brightness(1.14); }
     .group-toggle { margin-right: 6px; font-size: 0.68rem; color: var(--muted); }
     body.light tr.group-header-row td { background: #dde8f8; }
+
+    /* ── Subtask panel ───────────────────────────────────────────────────── */
+    tr.subtask-panel-row td        { background: var(--dark); padding: 0 !important; border-bottom: 1px solid var(--border); }
+    .subtask-panel                 { padding: 10px 18px 12px; }
+    .subtask-item                  { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+    .subtask-item input[type="checkbox"] { cursor: pointer; accent-color: var(--blue); flex-shrink:0; }
+    .subtask-text                  { flex: 1; font-size: 0.88rem; }
+    .subtask-text.done             { text-decoration: line-through; color: var(--muted); }
+    .subtask-del                   { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.78rem; opacity: 0; flex-shrink:0; }
+    .subtask-item:hover .subtask-del { opacity: 1; }
+    .subtask-progress              { margin-bottom: 8px; }
+    .subtask-progress-label        { font-size: 0.78rem; color: var(--muted); }
+    .subtask-progress-bar          { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 3px; }
+    .subtask-progress-fill         { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.3s; }
+    .subtask-add-row               { display: flex; gap: 6px; margin-top: 8px; }
+    .subtask-add-row input         { flex: 1; }
+    .breakdown-loading             { color: var(--muted); font-size: 0.85rem; padding: 4px 0; }
+    body.light tr.subtask-panel-row td { background: #f4f7ff; }
+    body.light .subtask-del        { color: #aaa; }
     body.light .group-header-name     { color: #1a1a1a; }
     body.light .group-badge           { border-color: #aac; color: #1a5cd4; }
 
@@ -495,12 +514,31 @@
   </div>
 </div>
 
+<!-- ── Settings Modal ── -->
+<div class="modal-backdrop" id="settings-modal">
+  <div class="modal">
+    <div class="modal-title">Settings</div>
+    <div id="settings-msg" style="color:var(--muted);font-size:0.85rem;margin-bottom:10px;min-height:1.2em;"></div>
+    <label style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:6px;">Claude API Key</label>
+    <input type="password" id="settings-api-key" placeholder="sk-ant-…" style="width:100%;margin-bottom:6px;" />
+    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:16px;">Stored in localStorage · used only for Task Breakdown (⚡)</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" id="settings-save-btn">Save Key</button>
+      <button class="btn btn-outline btn-sm" id="settings-clear-btn">Clear Key</button>
+      <button class="btn btn-outline btn-sm" id="settings-cancel-btn" style="margin-left:auto;">Close</button>
+    </div>
+  </div>
+</div>
+
 <header style="display:flex;align-items:center;justify-content:space-between;">
   <div>
     <h1>MY TASKS</h1>
     <p>Local task manager &mdash; data stays in your browser</p>
   </div>
-  <button class="theme-toggle" id="theme-toggle-btn" title="Toggle light / dark mode">☀</button>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <button class="theme-toggle" id="settings-btn" title="Settings">⚙</button>
+    <button class="theme-toggle" id="theme-toggle-btn" title="Toggle light / dark mode">☀</button>
+  </div>
 </header>
 
 <div id="storage-warning">
@@ -689,6 +727,8 @@ let trashTasks = [];
 let taskGroups = [];
 let currentFilter   = { status: 'all', fromDate: '', toDate: '', groupId: null };
 let collapsedGroups = new Set(); // group ids collapsed in All Tasks view; '__ungrouped__' for Ungrouped
+let allSubtasks = {};
+const loadingBreakdown = new Set();
 
 // ── Storage ────────────────────────────────────────────────────────────────
 function loadTasks() {
@@ -737,6 +777,13 @@ function loadGroups() {
 }
 function saveGroups(groups) {
   try { localStorage.setItem('task_groups', JSON.stringify(groups)); } catch(e) {}
+}
+
+function loadSubtasks() {
+  try { return JSON.parse(localStorage.getItem('subtasks') || '{}'); } catch(e) { return {}; }
+}
+function saveSubtasks(data) {
+  try { localStorage.setItem('subtasks', JSON.stringify(data)); } catch(e) {}
 }
 
 function purgeOldTrash() {
@@ -941,14 +988,25 @@ function taskRow(t, showGroupBadge) {
     const g = taskGroups.find(g => g.id === t.groupId);
     if (g) groupBadge = `<span class="group-badge">${escape(g.name)}</span>`;
   }
+  const subs = allSubtasks[t.id] || [];
+  let progressHtml = '';
+  if (subs.length) {
+    const done = subs.filter(s => s.done).length;
+    const pct = Math.round((done / subs.length) * 100);
+    progressHtml = `<div class="subtask-progress" style="margin-top:4px;"><div class="subtask-progress-label">${done}/${subs.length} subtasks</div><div class="subtask-progress-bar"><div class="subtask-progress-fill" style="width:${pct}%"></div></div></div>`;
+  }
   const nameCell = `<div class="task-name">${escape(t.name)}${groupBadge}</div>` +
     (t.description ? `<div class="task-desc">${escape(t.description)}</div>` : '') +
-    emailRef;
+    emailRef + progressHtml;
   const collabs = formatCollaborators(t.collaborators);
   const actions = isComplete
     ? `<button class="btn btn-warning btn-sm" data-id="${t.id}" data-action="undo">Undo</button>`
     : `<button class="btn btn-success btn-sm" data-id="${t.id}" data-action="complete">Complete</button>`;
-  return `
+  const isLoading = loadingBreakdown.has(t.id);
+  const breakdownBtn = isLoading
+    ? `<button class="btn btn-outline btn-sm" disabled title="Breaking down…">⏳</button>`
+    : `<button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="breakdown" title="Break into subtasks with AI">⚡</button>`;
+  const mainRow = `
     <tr class="${isComplete ? 'row-complete' : t.dueDate === 'ASAP' ? 'row-asap' : ''}">
       <td>${nameCell}</td>
       <td>${escape(formatDate(t.dueDate))}</td>
@@ -961,9 +1019,28 @@ function taskRow(t, showGroupBadge) {
           ${actions}
           <button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="edit">Edit</button>
           <button class="btn btn-danger btn-sm" data-id="${t.id}" data-action="delete">Delete</button>
+          ${breakdownBtn}
         </div>
       </td>
     </tr>`;
+  let subtaskPanel = '';
+  if (isLoading) {
+    subtaskPanel = `<tr class="subtask-panel-row"><td colspan="7"><div class="subtask-panel"><div class="breakdown-loading">⏳ Breaking down task with Claude…</div></div></td></tr>`;
+  } else if (subs.length) {
+    const subsHtml = subs.map(s => `<div class="subtask-item">
+        <input type="checkbox" data-taskid="${t.id}" data-subtaskid="${s.id}" ${s.done ? 'checked' : ''} />
+        <span class="subtask-text ${s.done ? 'done' : ''}">${escape(s.text)}</span>
+        <button class="subtask-del" data-taskid="${t.id}" data-subtaskid="${s.id}" title="Remove">✕</button>
+      </div>`).join('');
+    subtaskPanel = `<tr class="subtask-panel-row"><td colspan="7"><div class="subtask-panel">
+      ${subsHtml}
+      <div class="subtask-add-row">
+        <input type="text" class="subtask-add-input" data-taskid="${t.id}" placeholder="Add subtask…" />
+        <button class="btn btn-outline btn-sm subtask-add-btn" data-taskid="${t.id}">Add</button>
+      </div>
+    </div></td></tr>`;
+  }
+  return mainRow + subtaskPanel;
 }
 
 function renderTasks(tasks) {
@@ -1211,6 +1288,86 @@ function attachSidebarListeners() {
   });
 }
 
+// ── Task Breakdown ──────────────────────────────────────────────────────────
+async function callClaudeBreakdown(taskName, taskDesc) {
+  const apiKey = localStorage.getItem('claude_api_key') || '';
+  if (!apiKey) throw new Error('No API key set. Add one in Settings (⚙).');
+  const prompt = `Break this task into 3–7 clear, actionable subtasks.\n\nTask: ${taskName}${taskDesc ? '\nNotes: ' + taskDesc : ''}\n\nReturn ONLY a JSON array of strings, each string being one subtask. Example:\n["Research options", "Draft proposal", "Review with team"]`;
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 512,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${res.status}`);
+  }
+  const data = await res.json();
+  const text = data.content[0].text.trim();
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) throw new Error('Could not parse subtasks from response.');
+  return JSON.parse(match[0]);
+}
+
+async function breakdownTask(id) {
+  const task = allTasks.find(t => t.id === id);
+  if (!task || loadingBreakdown.has(id)) return;
+  loadingBreakdown.add(id);
+  renderAll();
+  try {
+    const subtasks = await callClaudeBreakdown(task.name, task.description);
+    if (!allSubtasks[id]) allSubtasks[id] = [];
+    subtasks.forEach(text => {
+      allSubtasks[id].push({ id: generateId(), text, done: false });
+    });
+    saveSubtasks(allSubtasks);
+  } catch (e) {
+    alert('Task breakdown failed: ' + e.message);
+  } finally {
+    loadingBreakdown.delete(id);
+    renderAll();
+  }
+}
+
+function addSubtask(taskId, text) {
+  if (!text.trim()) return;
+  if (!allSubtasks[taskId]) allSubtasks[taskId] = [];
+  allSubtasks[taskId].push({ id: generateId(), text: text.trim(), done: false });
+  saveSubtasks(allSubtasks);
+  renderAll();
+}
+
+function deleteSubtask(taskId, subtaskId) {
+  if (!allSubtasks[taskId]) return;
+  allSubtasks[taskId] = allSubtasks[taskId].filter(s => s.id !== subtaskId);
+  if (!allSubtasks[taskId].length) delete allSubtasks[taskId];
+  saveSubtasks(allSubtasks);
+  renderAll();
+}
+
+function toggleSubtask(taskId, subtaskId) {
+  if (!allSubtasks[taskId]) return;
+  allSubtasks[taskId] = allSubtasks[taskId].map(s =>
+    s.id === subtaskId ? { ...s, done: !s.done } : s
+  );
+  saveSubtasks(allSubtasks);
+  const subs = allSubtasks[taskId];
+  if (subs.length && subs.every(s => s.done)) {
+    const task = allTasks.find(t => t.id === taskId);
+    if (task && task.status === 'pending') { completeTask(taskId); return; }
+  }
+  renderAll();
+}
+
 // ── Event Listeners ────────────────────────────────────────────────────────
 function attachFormListener() {
   // Toggle form visibility
@@ -1443,7 +1600,10 @@ function attachEditModal() {
 }
 
 function attachTableListener() {
-  document.getElementById('task-tbody').addEventListener('click', e => {
+  const tbody = document.getElementById('task-tbody');
+
+  tbody.addEventListener('click', e => {
+    // Group collapse toggle
     const toggleRow = e.target.closest('[data-toggle-group]');
     if (toggleRow) {
       const gid = toggleRow.dataset.toggleGroup;
@@ -1452,25 +1612,93 @@ function attachTableListener() {
       renderAll();
       return;
     }
+    // Subtask delete
+    const subDel = e.target.closest('.subtask-del');
+    if (subDel) {
+      deleteSubtask(subDel.dataset.taskid, subDel.dataset.subtaskid);
+      return;
+    }
+    // Subtask add button
+    const subAdd = e.target.closest('.subtask-add-btn');
+    if (subAdd) {
+      const input = tbody.querySelector(`.subtask-add-input[data-taskid="${subAdd.dataset.taskid}"]`);
+      if (input) { addSubtask(subAdd.dataset.taskid, input.value); input.value = ''; }
+      return;
+    }
+    // Task actions
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const { id, action } = btn.dataset;
-    if (action === 'complete') completeTask(id);
-    else if (action === 'undo')     uncompleteTask(id);
-    else if (action === 'delete')   deleteTask(id);
-    else if (action === 'edit')     openEditModal(id);
+    if (action === 'complete')   completeTask(id);
+    else if (action === 'undo')      uncompleteTask(id);
+    else if (action === 'delete')    deleteTask(id);
+    else if (action === 'edit')      openEditModal(id);
+    else if (action === 'breakdown') breakdownTask(id);
   });
+
+  // Subtask checkbox toggle
+  tbody.addEventListener('change', e => {
+    if (e.target.type === 'checkbox' && e.target.dataset.subtaskid) {
+      toggleSubtask(e.target.dataset.taskid, e.target.dataset.subtaskid);
+    }
+  });
+
+  // Enter on subtask add input
+  tbody.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.classList.contains('subtask-add-input')) {
+      e.preventDefault();
+      const taskId = e.target.dataset.taskid;
+      addSubtask(taskId, e.target.value);
+      e.target.value = '';
+    }
+  });
+
   document.getElementById('trash-tbody').addEventListener('click', e => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const { id, action } = btn.dataset;
-    if (action === 'restore')       restoreTask(id);
+    if (action === 'restore')          restoreTask(id);
     else if (action === 'perm-delete') permanentlyDeleteTask(id);
   });
 }
 
 function attachTrashListeners() {
   document.getElementById('empty-trash-btn').addEventListener('click', emptyTrash);
+}
+
+function attachSettingsListeners() {
+  document.getElementById('settings-btn').addEventListener('click', () => {
+    const key = localStorage.getItem('claude_api_key') || '';
+    document.getElementById('settings-api-key').value = key;
+    document.getElementById('settings-msg').textContent = '';
+    document.getElementById('settings-modal').classList.add('open');
+  });
+  document.getElementById('settings-cancel-btn').addEventListener('click', () => {
+    document.getElementById('settings-modal').classList.remove('open');
+  });
+  document.getElementById('settings-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('settings-modal'))
+      document.getElementById('settings-modal').classList.remove('open');
+  });
+  document.getElementById('settings-save-btn').addEventListener('click', () => {
+    const key = document.getElementById('settings-api-key').value.trim();
+    const msg = document.getElementById('settings-msg');
+    if (key) {
+      localStorage.setItem('claude_api_key', key);
+      msg.textContent = 'Key saved.';
+      msg.style.color = 'var(--green)';
+    } else {
+      msg.textContent = 'Enter a key first.';
+      msg.style.color = 'var(--pink)';
+    }
+  });
+  document.getElementById('settings-clear-btn').addEventListener('click', () => {
+    localStorage.removeItem('claude_api_key');
+    document.getElementById('settings-api-key').value = '';
+    const msg = document.getElementById('settings-msg');
+    msg.textContent = 'Key cleared.';
+    msg.style.color = 'var(--muted)';
+  });
 }
 
 // ── Theme Toggle ────────────────────────────────────────────────────────────
@@ -1493,6 +1721,7 @@ document.addEventListener('DOMContentLoaded', () => {
   allTasks   = loadTasks();
   trashTasks = loadTrash();
   taskGroups = loadGroups();
+  allSubtasks = loadSubtasks();
   purgeOldTrash();
   populateGroupSelects();
   attachFormListener();
@@ -1501,6 +1730,7 @@ document.addEventListener('DOMContentLoaded', () => {
   attachTableListener();
   attachTrashListeners();
   attachSidebarListeners();
+  attachSettingsListeners();
   renderAll();
 
   const savedTheme = localStorage.getItem('theme') || 'dark';
