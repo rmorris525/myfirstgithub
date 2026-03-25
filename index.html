@@ -626,6 +626,14 @@
       <div style="margin-top:18px;">
         <button type="submit" class="btn btn-primary">+ Add Task</button>
       </div>
+      <div style="margin-top:18px;">
+        <label>Subtasks</label>
+        <div id="f-subtask-list" style="margin-bottom:6px;"></div>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="f-subtask-input" placeholder="Add a subtask…" style="flex:1;" />
+          <button type="button" class="btn btn-outline btn-sm" id="f-subtask-add-btn">Add</button>
+        </div>
+      </div>
     </form>
   </div>
 
@@ -1298,6 +1306,39 @@ function toggleSubtask(taskId, subtaskId) {
 
 // ── Event Listeners ────────────────────────────────────────────────────────
 function attachFormListener() {
+  let formSubtasks = [];
+
+  function renderFormSubtasks() {
+    const list = document.getElementById('f-subtask-list');
+    if (!formSubtasks.length) { list.innerHTML = ''; return; }
+    list.innerHTML = formSubtasks.map((s, i) => `
+      <div class="subtask-item">
+        <span class="subtask-text" style="flex:1;">${escape(s)}</span>
+        <button type="button" class="subtask-del" data-fi="${i}" title="Remove">✕</button>
+      </div>`).join('');
+    list.querySelectorAll('.subtask-del').forEach(btn => {
+      btn.addEventListener('click', () => {
+        formSubtasks.splice(Number(btn.dataset.fi), 1);
+        renderFormSubtasks();
+      });
+    });
+  }
+
+  function addFormSubtask() {
+    const input = document.getElementById('f-subtask-input');
+    const text = input.value.trim();
+    if (!text) return;
+    formSubtasks.push(text);
+    input.value = '';
+    renderFormSubtasks();
+    input.focus();
+  }
+
+  document.getElementById('f-subtask-add-btn').addEventListener('click', addFormSubtask);
+  document.getElementById('f-subtask-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addFormSubtask(); }
+  });
+
   // Toggle form visibility
   function showForm() {
     document.getElementById('task-form-card').style.display = 'block';
@@ -1314,6 +1355,8 @@ function attachFormListener() {
   function hideForm() {
     document.getElementById('task-form-card').style.display = 'none';
     document.getElementById('toggle-form-btn').style.display = '';
+    formSubtasks = [];
+    renderFormSubtasks();
     hideInlineGroupForm();
   }
   document.getElementById('toggle-form-btn').addEventListener('click', showForm);
@@ -1376,6 +1419,11 @@ function attachFormListener() {
 
     allTasks.push(task);
     saveTasks(allTasks);
+    if (formSubtasks.length) {
+      allSubtasks[task.id] = formSubtasks.map(text => ({ id: generateId(), text, done: false }));
+      saveSubtasks(allSubtasks);
+      expandedSubtasks.add(task.id);
+    }
     e.target.reset();
     document.getElementById('f-due').style.display = 'none';
     hideForm();
