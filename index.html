@@ -818,6 +818,170 @@ function saveSubtasks(data) {
 }
 
 
+// ── File Backup (File System Access API) ───────────────────────────────────
+function isFileAccessSupported() { return 'showSaveFilePicker' in window; }
+
+function openBackupDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('mytasks_backup', 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore('handles');
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+async function storeFileHandle(handle) {
+  const db = await openBackupDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').put(handle, 'backup');
+    tx.oncomplete = resolve;
+    tx.onerror = e => reject(e.target.error);
+  });
+}
+
+async function getFileHandle() {
+  const db = await openBackupDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('handles', 'readonly');
+    const req = tx.objectStore('handles').get('backup');
+    req.onsuccess = e => resolve(e.target.result || null);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+async function clearStoredFileHandle() {
+  const db = await openBackupDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').delete('backup');
+    tx.oncomplete = resolve;
+    tx.onerror = e => reject(e.target.error);
+  });
+}
+
+async function getWritePermission(handle) {
+  const perm = await handle.queryPermission({ mode: 'readwrite' });
+  if (perm === 'granted') return true;
+  const req = await handle.requestPermission({ mode: 'readwrite' });
+  return req === 'granted';
+}
+
+function setBackupStatus(text, color) {
+  const el = document.getElementById('backup-status');
+  if (el) { el.textContent = text; el.style.color = color; }
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-label');
+  if (dot) dot.className = color === 'var(--green, #4caf50)' ? 'online' : 'offline';
+  if (lbl) lbl.textContent = text;
+}
+
+let backupSaveTimer = null;
+function scheduleBackupSave() {
+  clearTimeout(backupSaveTimer);
+  backupSaveTimer = setTimeout(performBackupSave, 2000);
+}
+
+async function performBackupSave() {
+  if (!isFileAccessSupported()) return;
+  try {
+    const handle = await getFileHandle();
+    if (!handle) return;
+    const granted = await getWritePermission(handle);
+    if (!granted) { setBackupStatus('Permission denied', 'var(--red,#f44336)'); return; }
+    const data = {
+      tasks: allTasks,
+      trash: trashTasks,
+      groups: taskGroups,
+      subtasks: allSubtasks,
+      savedAt: new Date().toISOString()
+    };
+    const writable = await handle.createWritable();
+    await writable.write(JSON.stringify(data, null, 2));
+    await writable.close();
+    setBackupStatus('Backup saved', 'var(--green,#4caf50)');
+  } catch (e) {
+    console.error('Backup save failed', e);
+    setBackupStatus('Backup failed', 'var(--red,#f44336)');
+  }
+}
+
+async function linkBackupFile() {
+  if (!isFileAccessSupported()) {
+    alert('File System Access API is not supported in this browser. Use Chrome or Edge.');
+    return;
+  }
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: 'mytasks-backup.json',
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+    });
+    await storeFileHandle(handle);
+    setBackupStatus('Linked — saving…', 'var(--yellow,#ff9800)');
+    await performBackupSave();
+    setBackupStatus('Backup linked', 'var(--green,#4caf50)');
+  } catch (e) {
+    if (e.name !== 'AbortError') { console.error(e); alert('Could not link file: ' + e.message); }
+  }
+}
+
+async function restoreFromBackup() {
+  if (!isFileAccessSupported()) {
+    alert('File System Access API is not supported in this browser. Use Chrome or Edge.');
+    return;
+  }
+  try {
+    let handle = await getFileHandle();
+    if (!handle) {
+      // Let user pick the file manually
+      const [picked] = await window.showOpenFilePicker({
+        types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+      });
+      handle = picked;
+      await storeFileHandle(handle);
+    }
+    const granted = await getWritePermission(handle);
+    if (!granted) { alert('Read permission denied.'); return; }
+    const file = await handle.getFile();
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!confirm('Restore data from backup? This will overwrite your current tasks.')) return;
+    if (data.tasks)    { allTasks = data.tasks;       localStorage.setItem('tasks', JSON.stringify(allTasks)); }
+    if (data.trash)    { trashTasks = data.trash;     localStorage.setItem('tasks_trash', JSON.stringify(trashTasks)); }
+    if (data.groups)   { taskGroups = data.groups;    localStorage.setItem('task_groups', JSON.stringify(taskGroups)); }
+    if (data.subtasks) { allSubtasks = data.subtasks; localStorage.setItem('subtasks', JSON.stringify(allSubtasks)); }
+    renderTasks();
+    renderGroups();
+    alert('Restore complete!');
+    setBackupStatus('Backup linked', 'var(--green,#4caf50)');
+  } catch (e) {
+    if (e.name !== 'AbortError') { console.error(e); alert('Restore failed: ' + e.message); }
+  }
+}
+
+async function unlinkBackupFile() {
+  if (!confirm('Unlink the backup file? Auto-save will stop.')) return;
+  await clearStoredFileHandle();
+  setBackupStatus('Backup not linked', 'var(--muted,#888)');
+}
+
+async function initBackupStatus() {
+  if (!isFileAccessSupported()) {
+    setBackupStatus('Not supported', 'var(--muted,#888)');
+    return;
+  }
+  try {
+    const handle = await getFileHandle();
+    if (handle) {
+      setBackupStatus('Backup linked', 'var(--green,#4caf50)');
+    } else {
+      setBackupStatus('Backup not linked', 'var(--muted,#888)');
+    }
+  } catch (e) {
+    setBackupStatus('Backup not linked', 'var(--muted,#888)');
+  }
+}
+
 function purgeOldTrash() {
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
   trashTasks = trashTasks.filter(t => new Date(t.trashedAt).getTime() > cutoff);
