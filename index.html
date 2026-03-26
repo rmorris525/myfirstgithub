@@ -536,13 +536,13 @@
     <div style="font-size:0.82rem;color:var(--muted);margin-bottom:10px;">Pick a file in your OneDrive folder — the app will overwrite it automatically after every change.</div>
     <div style="font-size:0.8rem;margin-bottom:12px;">Status: <span id="backup-status" style="color:var(--muted);">Checking…</span></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn btn-primary btn-sm" id="backup-link-btn">Link Backup File</button>
-      <button class="btn btn-outline btn-sm" id="backup-restore-btn">Restore from Backup</button>
-      <button class="btn btn-outline btn-sm" id="backup-unlink-btn">Unlink</button>
+      <button class="btn btn-primary btn-sm" onclick="linkBackupFile()">Link Backup File</button>
+      <button class="btn btn-outline btn-sm" onclick="restoreFromBackup()">Restore from Backup</button>
+      <button class="btn btn-outline btn-sm" onclick="unlinkBackupFile()">Unlink</button>
     </div>
     <div style="font-size:0.72rem;color:var(--muted);margin-top:8px;">Requires Chrome or Edge. Your browser may ask "Allow edits?" once per session — click Allow.</div>
     <div style="margin-top:20px;text-align:right;">
-      <button class="btn btn-outline btn-sm" id="settings-cancel-btn">Close</button>
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('settings-modal').classList.remove('open')">Close</button>
     </div>
   </div>
 </div>
@@ -1702,11 +1702,6 @@ function attachTrashListeners() {
 
 function attachSettingsListeners() {
   const modal = document.getElementById('settings-modal');
-  document.getElementById('backup-link-btn').addEventListener('click', linkBackupFile);
-  document.getElementById('backup-restore-btn').addEventListener('click', restoreFromBackup);
-  document.getElementById('backup-unlink-btn').addEventListener('click', unlinkBackupFile);
-  document.getElementById('settings-btn').addEventListener('click', () => modal.classList.add('open'));
-  document.getElementById('settings-cancel-btn').addEventListener('click', () => modal.classList.remove('open'));
   modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
 }
 
