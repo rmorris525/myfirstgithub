@@ -533,10 +533,9 @@
   <div class="modal">
     <div class="modal-title">Settings</div>
     <div id="settings-msg" style="font-size:0.85rem;margin-bottom:12px;min-height:1.2em;"></div>
-    <label>NeonDB Connection String</label>
-    <input type="password" id="settings-neon-conn" placeholder="postgresql://user:pass@ep-xxx.neon.tech/dbname" style="width:100%;margin-bottom:6px;" />
-    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:4px;">Find this in your Neon project dashboard → Connection Details → Connection string</div>
-    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:16px;">Stored in localStorage on this device only. Never sent anywhere except your own Neon database.</div>
+    <label>Sync URL</label>
+    <input type="text" id="settings-neon-conn" placeholder="https://your-worker.your-name.workers.dev" style="width:100%;margin-bottom:6px;" />
+    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:16px;">Your Cloudflare Worker URL — see setup guide below.</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
       <button class="btn btn-primary btn-sm" id="settings-save-btn">Save &amp; Connect</button>
       <button class="btn btn-outline btn-sm" id="settings-test-btn">Test Connection</button>
@@ -819,51 +818,27 @@ function saveSubtasks(data) {
 // ── NeonDB Sync ─────────────────────────────────────────────────────────────
 let syncStatus = 'unconfigured'; // unconfigured | offline | syncing | synced | pending | error
 
-function getNeonHost(connStr) {
-  try {
-    const m = connStr.match(/@([^/]+)\//);
-    return m ? m[1] : null;
-  } catch(e) { return null; }
+async function workerFetch(path, body) {
+  const url = localStorage.getItem('neon_conn') || '';
+  if (!url) throw new Error('No sync URL configured. Add it in Settings (⚙).');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, body }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
 }
 
 async function neonQuery(sql, params = []) {
-  const conn = localStorage.getItem('neon_conn') || '';
-  if (!conn) throw new Error('No connection string configured.');
-  const host = getNeonHost(conn);
-  if (!host) throw new Error('Could not parse host from connection string.');
-  const res = await fetch(`https://${host}/sql/v1`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Neon-Connection-String': conn,
-    },
-    body: JSON.stringify({ query: sql, params }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || err.error || `HTTP ${res.status}`);
-  }
-  return res.json();
+  return workerFetch('/sql/v1', { query: sql, params });
 }
 
 async function neonTransaction(queries) {
-  const conn = localStorage.getItem('neon_conn') || '';
-  if (!conn) throw new Error('No connection string configured.');
-  const host = getNeonHost(conn);
-  if (!host) throw new Error('Could not parse host from connection string.');
-  const res = await fetch(`https://${host}/sql/v1/transaction`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Neon-Connection-String': conn,
-    },
-    body: JSON.stringify({ queries }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || err.error || `HTTP ${res.status}`);
-  }
-  return res.json();
+  return workerFetch('/sql/v1/transaction', { queries });
 }
 
 async function initNeonTables() {
