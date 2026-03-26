@@ -1129,6 +1129,49 @@ function renderMonthDropdown() {
 }
 
 // ── Copy for Email ─────────────────────────────────────────────────────────
+function toPastTense(str) {
+  if (!str) return str;
+  const irregulars = {
+    add:'added', apply:'applied', approve:'approved', assign:'assigned',
+    begin:'began', bring:'brought', build:'built', buy:'bought',
+    call:'called', catch:'caught', check:'checked', choose:'chose',
+    clean:'cleaned', close:'closed', come:'came', complete:'completed',
+    connect:'connected', contact:'contacted', coordinate:'coordinated',
+    create:'created', cut:'cut', deal:'dealt', delete:'deleted',
+    deploy:'deployed', dig:'dug', do:'did', draw:'drew', drive:'drove',
+    drop:'dropped', email:'emailed', file:'filed', find:'found',
+    fix:'fixed', follow:'followed', get:'got', give:'gave', go:'went',
+    hang:'hung', have:'had', hear:'heard', hold:'held', inspect:'inspected',
+    install:'installed', investigate:'investigated', issue:'issued',
+    keep:'kept', know:'knew', lead:'led', leave:'left', load:'loaded',
+    locate:'located', log:'logged', make:'made', mark:'marked',
+    meet:'met', move:'moved', notify:'notified', obtain:'obtained',
+    order:'ordered', pay:'paid', place:'placed', plan:'planned',
+    process:'processed', provide:'provided', pull:'pulled', put:'put',
+    receive:'received', remove:'removed', repair:'repaired',
+    replace:'replaced', report:'reported', request:'requested',
+    research:'researched', resolve:'resolved', restore:'restored',
+    review:'reviewed', run:'ran', schedule:'scheduled', send:'sent',
+    set:'set', ship:'shipped', show:'showed', sign:'signed',
+    speak:'spoke', stop:'stopped', submit:'submitted', tag:'tagged',
+    test:'tested', transfer:'transferred', troubleshoot:'troubleshot',
+    update:'updated', upload:'uploaded', verify:'verified', visit:'visited',
+    write:'wrote',
+  };
+  const words = str.split(' ');
+  const first = words[0].toLowerCase();
+  let past = irregulars[first];
+  if (!past) {
+    if (/e$/i.test(first))                          past = first + 'd';
+    else if (/[^aeiou]y$/i.test(first))             past = first.slice(0,-1) + 'ied';
+    else if (/([^aeiouwxy])[aeiou]\1$/i.test(first)) past = first + first.slice(-1) + 'ed';
+    else                                             past = first + 'ed';
+  }
+  // Preserve original capitalisation
+  if (words[0][0] === words[0][0].toUpperCase()) past = past.charAt(0).toUpperCase() + past.slice(1);
+  return [past, ...words.slice(1)].join(' ');
+}
+
 function copyForEmail() {
   const filtered = filterTasks(allTasks, currentFilter);
 
@@ -1158,7 +1201,7 @@ function copyForEmail() {
   ];
 
   filtered.forEach(t => {
-    lines.push(`• ${t.name}`);
+    lines.push(`• ${toPastTense(t.name)}`);
   });
 
   const text = lines.join('\n');
