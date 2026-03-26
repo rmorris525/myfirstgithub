@@ -867,12 +867,15 @@ async function getWritePermission(handle) {
   return req === 'granted';
 }
 
-function setBackupStatus(text, color) {
+// state: 'ok' | 'error' | 'saving' | 'pending' | 'offline'
+function setBackupStatus(text, state) {
   const el = document.getElementById('backup-status');
-  if (el) { el.textContent = text; el.style.color = color; }
   const dot = document.getElementById('sync-dot');
   const lbl = document.getElementById('sync-label');
-  if (dot) dot.className = color === 'var(--green, #4caf50)' ? 'online' : 'offline';
+  const colorMap = { ok: 'var(--green)', error: 'var(--pink)', saving: 'var(--blue)', pending: '#ff8c00', offline: 'var(--muted)' };
+  const dotMap   = { ok: 'synced', error: 'error', saving: 'syncing', pending: 'pending', offline: 'offline' };
+  if (el) { el.textContent = text; el.style.color = colorMap[state] || 'var(--muted)'; }
+  if (dot) dot.className = dotMap[state] || 'offline';
   if (lbl) lbl.textContent = text;
 }
 
@@ -887,8 +890,9 @@ async function performBackupSave() {
   try {
     const handle = await getFileHandle();
     if (!handle) return;
+    setBackupStatus('Saving…', 'saving');
     const granted = await getWritePermission(handle);
-    if (!granted) { setBackupStatus('Permission denied', 'var(--red,#f44336)'); return; }
+    if (!granted) { setBackupStatus('Permission denied — click Allow when prompted', 'error'); return; }
     const data = {
       tasks: allTasks,
       trash: trashTasks,
@@ -899,10 +903,15 @@ async function performBackupSave() {
     const writable = await handle.createWritable();
     await writable.write(JSON.stringify(data, null, 2));
     await writable.close();
-    setBackupStatus('Backup saved', 'var(--green,#4caf50)');
+    setBackupStatus('Backup saved', 'ok');
   } catch (e) {
     console.error('Backup save failed', e);
-    setBackupStatus('Backup failed', 'var(--red,#f44336)');
+    const msg = e.name === 'NotAllowedError'  ? 'Permission denied — click Allow when prompted'
+              : e.name === 'NotFoundError'    ? 'File not found — try re-linking'
+              : e.name === 'NoModificationAllowedError' ? 'File is read-only'
+              : e.name === 'QuotaExceededError'         ? 'Disk full'
+              : `Save error: ${e.message}`;
+    setBackupStatus(msg, 'error');
   }
 }
 
@@ -917,9 +926,8 @@ async function linkBackupFile() {
       types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
     });
     await storeFileHandle(handle);
-    setBackupStatus('Linked — saving…', 'var(--yellow,#ff9800)');
+    setBackupStatus('Linked — saving…', 'pending');
     await performBackupSave();
-    setBackupStatus('Backup linked', 'var(--green,#4caf50)');
   } catch (e) {
     if (e.name !== 'AbortError') { console.error(e); alert('Could not link file: ' + e.message); }
   }
@@ -953,7 +961,7 @@ async function restoreFromBackup() {
     renderTasks();
     renderGroups();
     alert('Restore complete!');
-    setBackupStatus('Backup linked', 'var(--green,#4caf50)');
+    setBackupStatus('Backup linked', 'ok');
   } catch (e) {
     if (e.name !== 'AbortError') { console.error(e); alert('Restore failed: ' + e.message); }
   }
@@ -962,23 +970,23 @@ async function restoreFromBackup() {
 async function unlinkBackupFile() {
   if (!confirm('Unlink the backup file? Auto-save will stop.')) return;
   await clearStoredFileHandle();
-  setBackupStatus('Backup not linked', 'var(--muted,#888)');
+  setBackupStatus('Backup not linked', 'offline');
 }
 
 async function initBackupStatus() {
   if (!isFileAccessSupported()) {
-    setBackupStatus('Not supported', 'var(--muted,#888)');
+    setBackupStatus('Not supported', 'offline');
     return;
   }
   try {
     const handle = await getFileHandle();
     if (handle) {
-      setBackupStatus('Backup linked', 'var(--green,#4caf50)');
+      setBackupStatus('Backup linked', 'ok');
     } else {
-      setBackupStatus('Backup not linked', 'var(--muted,#888)');
+      setBackupStatus('Backup not linked', 'offline');
     }
   } catch (e) {
-    setBackupStatus('Backup not linked', 'var(--muted,#888)');
+    setBackupStatus('Backup not linked', 'offline');
   }
 }
 
