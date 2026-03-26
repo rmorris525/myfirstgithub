@@ -557,7 +557,7 @@
       <div id="sync-dot" class="offline"></div>
       <span id="sync-label">Backup not linked</span>
     </div>
-    <button class="theme-toggle" id="settings-btn" title="Settings">⚙</button>
+    <button class="theme-toggle" id="settings-btn" title="Settings" onclick="document.getElementById('settings-modal').classList.add('open')">⚙</button>
     <button class="theme-toggle" id="theme-toggle-btn" title="Toggle light / dark mode">☀</button>
   </div>
 </header>
@@ -1038,8 +1038,9 @@ function taskRow(t, showGroupBadge) {
     ? `<button class="btn btn-warning btn-sm" data-id="${t.id}" data-action="undo">Undo</button>`
     : `<button class="btn btn-success btn-sm" data-id="${t.id}" data-action="complete">Complete</button>`;
   const isExpanded = expandedSubtasks.has(t.id);
-  const toggleArrow = isExpanded ? '▼' : '▶';
-  const subtaskLabel = subs.length ? `${toggleArrow} ${subs.length} subtask${subs.length !== 1 ? 's' : ''}` : `${toggleArrow} Subtasks`;
+  const subtaskToggle = subs.length
+    ? `<button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="toggle-subtasks" title="Toggle subtasks" style="font-size:0.78rem;">${isExpanded ? '▼' : '▶'} ${subs.length} subtask${subs.length !== 1 ? 's' : ''}</button>`
+    : `<button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="toggle-subtasks" title="Add subtasks" style="font-size:0.78rem;">+ subtask</button>`;
   const mainRow = `
     <tr class="${isComplete ? 'row-complete' : t.dueDate === 'ASAP' ? 'row-asap' : ''}">
       <td>${nameCell}</td>
@@ -1053,7 +1054,7 @@ function taskRow(t, showGroupBadge) {
           ${actions}
           <button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="edit">Edit</button>
           <button class="btn btn-danger btn-sm" data-id="${t.id}" data-action="delete">Delete</button>
-          <button class="btn btn-outline btn-sm" data-id="${t.id}" data-action="toggle-subtasks" title="Toggle subtasks" style="font-size:0.78rem;">${subtaskLabel}</button>
+          ${subtaskToggle}
         </div>
       </td>
     </tr>`;
@@ -1731,6 +1732,8 @@ document.addEventListener('DOMContentLoaded', () => {
   trashTasks = loadTrash();
   taskGroups = loadGroups();
   allSubtasks = loadSubtasks();
+  // Auto-expand subtask panels for tasks that already have subtasks
+  Object.keys(allSubtasks).forEach(id => expandedSubtasks.add(id));
   purgeOldTrash();
   populateGroupSelects();
   attachFormListener();
