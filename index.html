@@ -455,6 +455,21 @@
       .sb-item--active { border-bottom-color: var(--blue); border-left-color: transparent; }
       .sb-del          { opacity: 1; }
     }
+    /* ── Sync indicator ─────────────────────────────────────────────────── */
+    #sync-indicator {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.75rem; color: var(--muted); white-space: nowrap;
+    }
+    #sync-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      background: var(--muted);
+    }
+    #sync-dot.synced  { background: var(--green); }
+    #sync-dot.syncing { background: var(--blue); animation: pulse 1s infinite; }
+    #sync-dot.pending { background: #ff8c00; }
+    #sync-dot.error   { background: var(--pink); }
+    #sync-dot.offline { background: var(--muted); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
   </style>
 </head>
 <body>
@@ -513,12 +528,35 @@
   </div>
 </div>
 
+<!-- ── Settings Modal ── -->
+<div class="modal-backdrop" id="settings-modal">
+  <div class="modal">
+    <div class="modal-title">Settings</div>
+    <div id="settings-msg" style="font-size:0.85rem;margin-bottom:12px;min-height:1.2em;"></div>
+    <label>NeonDB Connection String</label>
+    <input type="password" id="settings-neon-conn" placeholder="postgresql://user:pass@ep-xxx.neon.tech/dbname" style="width:100%;margin-bottom:6px;" />
+    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:4px;">Find this in your Neon project dashboard → Connection Details → Connection string</div>
+    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:16px;">Stored in localStorage on this device only. Never sent anywhere except your own Neon database.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <button class="btn btn-primary btn-sm" id="settings-save-btn">Save &amp; Connect</button>
+      <button class="btn btn-outline btn-sm" id="settings-test-btn">Test Connection</button>
+      <button class="btn btn-outline btn-sm" id="settings-clear-btn">Disconnect</button>
+      <button class="btn btn-outline btn-sm" id="settings-cancel-btn" style="margin-left:auto;">Close</button>
+    </div>
+  </div>
+</div>
+
 <header style="display:flex;align-items:center;justify-content:space-between;">
   <div>
     <h1>MY TASKS</h1>
     <p>Local task manager &mdash; data stays in your browser</p>
   </div>
-  <div style="display:flex;gap:8px;align-items:center;">
+  <div style="display:flex;gap:10px;align-items:center;">
+    <div id="sync-indicator" title="Sync status">
+      <div id="sync-dot" class="offline"></div>
+      <span id="sync-label">No sync configured</span>
+    </div>
+    <button class="theme-toggle" id="settings-btn" title="Settings">⚙</button>
     <button class="theme-toggle" id="theme-toggle-btn" title="Toggle light / dark mode">☀</button>
   </div>
 </header>
@@ -732,6 +770,7 @@ function loadTasks() {
 function saveTasks(tasks) {
   try {
     localStorage.setItem('tasks', JSON.stringify(tasks));
+    scheduleSyncAfterChange();
   } catch (e) {
     document.getElementById('storage-warning').style.display = 'block';
   }
@@ -757,6 +796,7 @@ function loadTrash() {
 function saveTrash(tasks) {
   try {
     localStorage.setItem('tasks_trash', JSON.stringify(tasks));
+    scheduleSyncAfterChange();
   } catch (e) {
     document.getElementById('storage-warning').style.display = 'block';
   }
@@ -766,14 +806,202 @@ function loadGroups() {
   try { return JSON.parse(localStorage.getItem('task_groups') || '[]'); } catch(e) { return []; }
 }
 function saveGroups(groups) {
-  try { localStorage.setItem('task_groups', JSON.stringify(groups)); } catch(e) {}
+  try { localStorage.setItem('task_groups', JSON.stringify(groups)); scheduleSyncAfterChange(); } catch(e) {}
 }
 
 function loadSubtasks() {
   try { return JSON.parse(localStorage.getItem('subtasks') || '{}'); } catch(e) { return {}; }
 }
 function saveSubtasks(data) {
-  try { localStorage.setItem('subtasks', JSON.stringify(data)); } catch(e) {}
+  try { localStorage.setItem('subtasks', JSON.stringify(data)); scheduleSyncAfterChange(); } catch(e) {}
+}
+
+// ── NeonDB Sync ─────────────────────────────────────────────────────────────
+let syncStatus = 'unconfigured'; // unconfigured | offline | syncing | synced | pending | error
+
+function getNeonHost(connStr) {
+  try {
+    const m = connStr.match(/@([^/]+)\//);
+    return m ? m[1] : null;
+  } catch(e) { return null; }
+}
+
+async function neonQuery(sql, params = []) {
+  const conn = localStorage.getItem('neon_conn') || '';
+  if (!conn) throw new Error('No connection string configured.');
+  const host = getNeonHost(conn);
+  if (!host) throw new Error('Could not parse host from connection string.');
+  const res = await fetch(`https://${host}/sql/v1`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Neon-Connection-String': conn,
+    },
+    body: JSON.stringify({ query: sql, params }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function neonTransaction(queries) {
+  const conn = localStorage.getItem('neon_conn') || '';
+  if (!conn) throw new Error('No connection string configured.');
+  const host = getNeonHost(conn);
+  if (!host) throw new Error('Could not parse host from connection string.');
+  const res = await fetch(`https://${host}/sql/v1/transaction`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Neon-Connection-String': conn,
+    },
+    body: JSON.stringify({ queries }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function initNeonTables() {
+  await neonQuery(`CREATE TABLE IF NOT EXISTS tasks_sync (
+    id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL)`);
+  await neonQuery(`CREATE TABLE IF NOT EXISTS groups_sync (
+    id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL)`);
+  await neonQuery(`CREATE TABLE IF NOT EXISTS subtasks_sync (
+    task_id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL)`);
+  await neonQuery(`CREATE TABLE IF NOT EXISTS trash_sync (
+    id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL)`);
+}
+
+function mergeById(local, remote) {
+  const map = {};
+  local.forEach(item => { map[item.id] = item; });
+  remote.forEach(item => {
+    if (!map[item.id]) { map[item.id] = item; }
+    else {
+      const localTs  = map[item.id].updatedAt || map[item.id].addedAt || '2000-01-01';
+      const remoteTs = item.updatedAt || item.addedAt || '2000-01-01';
+      if (remoteTs > localTs) map[item.id] = item;
+    }
+  });
+  return Object.values(map);
+}
+
+function mergeSubtaskMaps(local, remote) {
+  const merged = { ...local };
+  Object.entries(remote).forEach(([taskId, subs]) => {
+    if (!merged[taskId]) { merged[taskId] = subs; }
+    else {
+      const localTs  = localStorage.getItem(`subtasks_ts_${taskId}`) || '2000-01-01';
+      const remoteTs = remote[`__ts_${taskId}`] || '2000-01-01';
+      if (remoteTs > localTs) merged[taskId] = subs;
+    }
+  });
+  return merged;
+}
+
+function setSyncStatus(status, label) {
+  syncStatus = status;
+  const dot   = document.getElementById('sync-dot');
+  const lbl   = document.getElementById('sync-label');
+  if (!dot || !lbl) return;
+  dot.className = status;
+  lbl.textContent = label;
+}
+
+async function syncWithNeon() {
+  if (!localStorage.getItem('neon_conn')) {
+    setSyncStatus('unconfigured', 'No sync configured');
+    return;
+  }
+  if (!navigator.onLine) {
+    setSyncStatus('offline', 'Offline — changes saved locally');
+    localStorage.setItem('neon_pending', '1');
+    return;
+  }
+  setSyncStatus('syncing', 'Syncing…');
+  try {
+    await initNeonTables();
+
+    // ── Pull ──
+    const [tRes, gRes, sRes, trRes] = await Promise.all([
+      neonQuery('SELECT id, data FROM tasks_sync'),
+      neonQuery('SELECT id, data FROM groups_sync'),
+      neonQuery('SELECT task_id, data FROM subtasks_sync'),
+      neonQuery('SELECT id, data FROM trash_sync'),
+    ]);
+
+    const remoteTasks  = (tRes.rows  || []).map(r => r.data);
+    const remoteGroups = (gRes.rows  || []).map(r => r.data);
+    const remoteTrash  = (trRes.rows || []).map(r => r.data);
+    const remoteSubMap = {};
+    (sRes.rows || []).forEach(r => { remoteSubMap[r.task_id] = r.data; });
+
+    // ── Merge ──
+    allTasks   = mergeById(allTasks,   remoteTasks);
+    taskGroups = mergeById(taskGroups, remoteGroups);
+    trashTasks = mergeById(trashTasks, remoteTrash);
+    Object.entries(remoteSubMap).forEach(([tid, subs]) => {
+      if (!allSubtasks[tid]) allSubtasks[tid] = subs;
+    });
+
+    saveTasks(allTasks);
+    saveGroups(taskGroups);
+    saveSubtasks(allSubtasks);
+    saveTrash(trashTasks);
+
+    // ── Push all ──
+    const now = new Date().toISOString();
+    const queries = [
+      ...allTasks.map(t => ({
+        query: `INSERT INTO tasks_sync (id, data, updated_at) VALUES ($1,$2,$3)
+                ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=EXCLUDED.updated_at`,
+        params: [t.id, JSON.stringify(t), t.updatedAt || now],
+      })),
+      ...taskGroups.map(g => ({
+        query: `INSERT INTO groups_sync (id, data, updated_at) VALUES ($1,$2,$3)
+                ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=EXCLUDED.updated_at`,
+        params: [g.id, JSON.stringify(g), g.createdAt || now],
+      })),
+      ...Object.entries(allSubtasks).map(([tid, subs]) => ({
+        query: `INSERT INTO subtasks_sync (task_id, data, updated_at) VALUES ($1,$2,$3)
+                ON CONFLICT (task_id) DO UPDATE SET data=EXCLUDED.data, updated_at=EXCLUDED.updated_at`,
+        params: [tid, JSON.stringify(subs), now],
+      })),
+      ...trashTasks.map(t => ({
+        query: `INSERT INTO trash_sync (id, data, updated_at) VALUES ($1,$2,$3)
+                ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=EXCLUDED.updated_at`,
+        params: [t.id, JSON.stringify(t), t.trashedAt || now],
+      })),
+    ];
+
+    if (queries.length) await neonTransaction(queries);
+
+    localStorage.removeItem('neon_pending');
+    setSyncStatus('synced', 'Synced');
+    populateGroupSelects();
+    renderAll();
+  } catch(e) {
+    console.error('Sync error:', e);
+    localStorage.setItem('neon_pending', '1');
+    setSyncStatus('error', 'Sync error — saved locally');
+  }
+}
+
+function scheduleSyncAfterChange() {
+  if (!localStorage.getItem('neon_conn')) return;
+  if (!navigator.onLine) {
+    localStorage.setItem('neon_pending', '1');
+    setSyncStatus('pending', 'Pending sync');
+    return;
+  }
+  // Debounce: wait 1.5s after last change before syncing
+  clearTimeout(window._syncTimer);
+  window._syncTimer = setTimeout(syncWithNeon, 1500);
 }
 
 function purgeOldTrash() {
@@ -801,22 +1029,25 @@ function createTask({ name, description, dueDate, scheduledDate, collaborators, 
     emailSubject: emailSubject || '',
     groupId:      groupId      || null,
     addedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     completedAt: null,
     status: 'pending'
   };
 }
 
 function completeTask(id) {
+  const now = new Date().toISOString();
   allTasks = allTasks.map(t =>
-    t.id === id ? { ...t, status: 'complete', completedAt: new Date().toISOString() } : t
+    t.id === id ? { ...t, status: 'complete', completedAt: now, updatedAt: now } : t
   );
   saveTasks(allTasks);
   renderAll();
 }
 
 function uncompleteTask(id) {
+  const now = new Date().toISOString();
   allTasks = allTasks.map(t =>
-    t.id === id ? { ...t, status: 'pending', completedAt: null } : t
+    t.id === id ? { ...t, status: 'pending', completedAt: null, updatedAt: now } : t
   );
   saveTasks(allTasks);
   renderAll();
@@ -1566,6 +1797,7 @@ function attachEditModal() {
         emailFrom:    document.getElementById('e-email-from').value.trim(),
         emailSubject: document.getElementById('e-email-subject').value.trim(),
         groupId:      document.getElementById('e-group').value || null,
+        updatedAt:    new Date().toISOString(),
       };
     });
 
@@ -1646,6 +1878,57 @@ function attachTrashListeners() {
   document.getElementById('empty-trash-btn').addEventListener('click', emptyTrash);
 }
 
+function attachSettingsListeners() {
+  const modal  = document.getElementById('settings-modal');
+  const msgEl  = document.getElementById('settings-msg');
+
+  function showMsg(text, color) {
+    msgEl.textContent = text;
+    msgEl.style.color = color || 'var(--muted)';
+  }
+
+  document.getElementById('settings-btn').addEventListener('click', () => {
+    const saved = localStorage.getItem('neon_conn') || '';
+    document.getElementById('settings-neon-conn').value = saved;
+    showMsg('');
+    modal.classList.add('open');
+  });
+  document.getElementById('settings-cancel-btn').addEventListener('click', () => modal.classList.remove('open'));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+
+  document.getElementById('settings-save-btn').addEventListener('click', () => {
+    const val = document.getElementById('settings-neon-conn').value.trim();
+    if (!val) { showMsg('Paste your connection string first.', 'var(--pink)'); return; }
+    localStorage.setItem('neon_conn', val);
+    showMsg('Saved! Connecting…', 'var(--green)');
+    modal.classList.remove('open');
+    syncWithNeon();
+  });
+
+  document.getElementById('settings-test-btn').addEventListener('click', async () => {
+    const val = document.getElementById('settings-neon-conn').value.trim();
+    if (!val) { showMsg('Paste a connection string first.', 'var(--pink)'); return; }
+    const prev = localStorage.getItem('neon_conn');
+    localStorage.setItem('neon_conn', val);
+    showMsg('Testing…', 'var(--muted)');
+    try {
+      await neonQuery('SELECT 1');
+      showMsg('✓ Connection successful!', 'var(--green)');
+    } catch(e) {
+      showMsg('✗ ' + e.message, 'var(--pink)');
+      if (prev) localStorage.setItem('neon_conn', prev);
+      else localStorage.removeItem('neon_conn');
+    }
+  });
+
+  document.getElementById('settings-clear-btn').addEventListener('click', () => {
+    localStorage.removeItem('neon_conn');
+    document.getElementById('settings-neon-conn').value = '';
+    showMsg('Disconnected.', 'var(--muted)');
+    setSyncStatus('unconfigured', 'No sync configured');
+  });
+}
+
 
 // ── Theme Toggle ────────────────────────────────────────────────────────────
 function applyTheme(theme) {
@@ -1676,6 +1959,7 @@ document.addEventListener('DOMContentLoaded', () => {
   attachTableListener();
   attachTrashListeners();
   attachSidebarListeners();
+  attachSettingsListeners();
   renderAll();
 
   const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -1685,6 +1969,25 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('theme', next);
     applyTheme(next);
   });
+
+  // Online/offline handling
+  window.addEventListener('offline', () => {
+    setSyncStatus('offline', 'Offline — changes saved locally');
+  });
+  window.addEventListener('online', () => {
+    if (localStorage.getItem('neon_conn')) syncWithNeon();
+  });
+
+  // Initial sync
+  if (localStorage.getItem('neon_conn')) {
+    if (navigator.onLine) {
+      syncWithNeon();
+    } else {
+      setSyncStatus('offline', 'Offline — changes saved locally');
+    }
+  } else {
+    setSyncStatus('unconfigured', 'No sync configured');
+  }
 });
 </script>
 </body>
