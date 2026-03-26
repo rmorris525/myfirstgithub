@@ -1899,8 +1899,8 @@ document.addEventListener('DOMContentLoaded', () => {
   trashTasks = loadTrash();
   taskGroups = loadGroups();
   allSubtasks = loadSubtasks();
-  // Auto-expand subtask panels for tasks that already have subtasks
-  Object.keys(allSubtasks).forEach(id => expandedSubtasks.add(id));
+  // Collapse all named groups on load; ungrouped/Unassigned stays visible
+  taskGroups.forEach(g => collapsedGroups.add(g.id));
   purgeOldTrash();
   populateGroupSelects();
   attachFormListener();
