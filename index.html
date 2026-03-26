@@ -532,36 +532,15 @@
 <div class="modal-backdrop" id="settings-modal">
   <div class="modal">
     <div class="modal-title">Settings</div>
-
-    <!-- Auto Backup -->
-    <div style="margin-bottom:20px;">
-      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:0.95rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--blue);margin-bottom:10px;">Auto Backup</div>
-      <div style="font-size:0.82rem;color:var(--muted);margin-bottom:10px;">Pick a file on your computer (or OneDrive folder) — the app will overwrite it automatically after every change.</div>
-      <div style="font-size:0.8rem;margin-bottom:12px;">Status: <span id="backup-status" style="color:var(--muted);">Checking…</span></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-primary btn-sm" id="backup-link-btn">Link Backup File</button>
-        <button class="btn btn-outline btn-sm" id="backup-restore-btn">Restore from Backup</button>
-        <button class="btn btn-outline btn-sm" id="backup-unlink-btn">Unlink</button>
-      </div>
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:8px;">Requires Chrome or Edge. Your browser may ask "Allow edits?" once per session — click Allow.</div>
+    <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:0.95rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--blue);margin-bottom:10px;">OneDrive / File Backup</div>
+    <div style="font-size:0.82rem;color:var(--muted);margin-bottom:10px;">Pick a file in your OneDrive folder — the app will overwrite it automatically after every change.</div>
+    <div style="font-size:0.8rem;margin-bottom:12px;">Status: <span id="backup-status" style="color:var(--muted);">Checking…</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" id="backup-link-btn">Link Backup File</button>
+      <button class="btn btn-outline btn-sm" id="backup-restore-btn">Restore from Backup</button>
+      <button class="btn btn-outline btn-sm" id="backup-unlink-btn">Unlink</button>
     </div>
-
-    <div style="height:1px;background:var(--border);margin-bottom:20px;"></div>
-
-    <!-- Cloud Sync (collapsed/optional) -->
-    <div style="margin-bottom:4px;">
-      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:0.95rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--blue);margin-bottom:10px;">Cloud Sync <span style="font-size:0.72rem;font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;">(optional)</span></div>
-      <div id="settings-msg" style="font-size:0.85rem;margin-bottom:8px;min-height:1.2em;"></div>
-      <label>Sync URL</label>
-      <input type="text" id="settings-neon-conn" placeholder="https://your-worker.your-name.workers.dev" style="width:100%;margin-bottom:6px;" />
-      <div style="font-size:0.75rem;color:var(--muted);margin-bottom:12px;">Cloudflare Worker URL for cross-device sync.</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-        <button class="btn btn-primary btn-sm" id="settings-save-btn">Save &amp; Connect</button>
-        <button class="btn btn-outline btn-sm" id="settings-test-btn">Test</button>
-        <button class="btn btn-outline btn-sm" id="settings-clear-btn">Disconnect</button>
-      </div>
-    </div>
-
+    <div style="font-size:0.72rem;color:var(--muted);margin-top:8px;">Requires Chrome or Edge. Your browser may ask "Allow edits?" once per session — click Allow.</div>
     <div style="margin-top:20px;text-align:right;">
       <button class="btn btn-outline btn-sm" id="settings-cancel-btn">Close</button>
     </div>
@@ -574,9 +553,9 @@
     <p>Local task manager &mdash; data stays in your browser</p>
   </div>
   <div style="display:flex;gap:10px;align-items:center;">
-    <div id="sync-indicator" title="Sync status">
+    <div id="sync-indicator" title="OneDrive backup status">
       <div id="sync-dot" class="offline"></div>
-      <span id="sync-label">No sync configured</span>
+      <span id="sync-label">Backup not linked</span>
     </div>
     <button class="theme-toggle" id="settings-btn" title="Settings">⚙</button>
     <button class="theme-toggle" id="theme-toggle-btn" title="Toggle light / dark mode">☀</button>
@@ -792,7 +771,7 @@ function loadTasks() {
 function saveTasks(tasks) {
   try {
     localStorage.setItem('tasks', JSON.stringify(tasks));
-    scheduleSyncAfterChange(); scheduleBackupSave();
+    scheduleBackupSave();
   } catch (e) {
     document.getElementById('storage-warning').style.display = 'block';
   }
@@ -818,7 +797,7 @@ function loadTrash() {
 function saveTrash(tasks) {
   try {
     localStorage.setItem('tasks_trash', JSON.stringify(tasks));
-    scheduleSyncAfterChange(); scheduleBackupSave();
+    scheduleBackupSave();
   } catch (e) {
     document.getElementById('storage-warning').style.display = 'block';
   }
@@ -828,323 +807,16 @@ function loadGroups() {
   try { return JSON.parse(localStorage.getItem('task_groups') || '[]'); } catch(e) { return []; }
 }
 function saveGroups(groups) {
-  try { localStorage.setItem('task_groups', JSON.stringify(groups)); scheduleSyncAfterChange(); scheduleBackupSave(); } catch(e) {}
+  try { localStorage.setItem('task_groups', JSON.stringify(groups)); scheduleBackupSave(); } catch(e) {}
 }
 
 function loadSubtasks() {
   try { return JSON.parse(localStorage.getItem('subtasks') || '{}'); } catch(e) { return {}; }
 }
 function saveSubtasks(data) {
-  try { localStorage.setItem('subtasks', JSON.stringify(data)); scheduleSyncAfterChange(); scheduleBackupSave(); } catch(e) {}
+  try { localStorage.setItem('subtasks', JSON.stringify(data)); scheduleBackupSave(); } catch(e) {}
 }
 
-// ── NeonDB Sync ─────────────────────────────────────────────────────────────
-let syncStatus = 'unconfigured'; // unconfigured | offline | syncing | synced | pending | error
-
-async function workerFetch(path, body) {
-  const url = localStorage.getItem('neon_conn') || '';
-  if (!url) throw new Error('No sync URL configured. Add it in Settings (⚙).');
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path, body }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || err.message || `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-async function neonQuery(sql, params = []) {
-  return workerFetch('/sql/v1', { query: sql, params });
-}
-
-async function neonTransaction(queries) {
-  return workerFetch('/sql/v1/transaction', { queries });
-}
-
-async function initNeonTables() {
-  await neonQuery(`CREATE TABLE IF NOT EXISTS tasks_sync (
-    id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL)`);
-  await neonQuery(`CREATE TABLE IF NOT EXISTS groups_sync (
-    id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL)`);
-  await neonQuery(`CREATE TABLE IF NOT EXISTS subtasks_sync (
-    task_id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL)`);
-  await neonQuery(`CREATE TABLE IF NOT EXISTS trash_sync (
-    id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL)`);
-}
-
-function mergeById(local, remote) {
-  const map = {};
-  local.forEach(item => { map[item.id] = item; });
-  remote.forEach(item => {
-    if (!map[item.id]) { map[item.id] = item; }
-    else {
-      const localTs  = map[item.id].updatedAt || map[item.id].addedAt || '2000-01-01';
-      const remoteTs = item.updatedAt || item.addedAt || '2000-01-01';
-      if (remoteTs > localTs) map[item.id] = item;
-    }
-  });
-  return Object.values(map);
-}
-
-function mergeSubtaskMaps(local, remote) {
-  const merged = { ...local };
-  Object.entries(remote).forEach(([taskId, subs]) => {
-    if (!merged[taskId]) { merged[taskId] = subs; }
-    else {
-      const localTs  = localStorage.getItem(`subtasks_ts_${taskId}`) || '2000-01-01';
-      const remoteTs = remote[`__ts_${taskId}`] || '2000-01-01';
-      if (remoteTs > localTs) merged[taskId] = subs;
-    }
-  });
-  return merged;
-}
-
-function setSyncStatus(status, label) {
-  syncStatus = status;
-  const dot   = document.getElementById('sync-dot');
-  const lbl   = document.getElementById('sync-label');
-  if (!dot || !lbl) return;
-  dot.className = status;
-  lbl.textContent = label;
-}
-
-async function syncWithNeon() {
-  if (!localStorage.getItem('neon_conn')) {
-    setSyncStatus('unconfigured', 'No sync configured');
-    return;
-  }
-  if (!navigator.onLine) {
-    setSyncStatus('offline', 'Offline — changes saved locally');
-    localStorage.setItem('neon_pending', '1');
-    return;
-  }
-  setSyncStatus('syncing', 'Syncing…');
-  try {
-    await initNeonTables();
-
-    // ── Pull ──
-    const [tRes, gRes, sRes, trRes] = await Promise.all([
-      neonQuery('SELECT id, data FROM tasks_sync'),
-      neonQuery('SELECT id, data FROM groups_sync'),
-      neonQuery('SELECT task_id, data FROM subtasks_sync'),
-      neonQuery('SELECT id, data FROM trash_sync'),
-    ]);
-
-    const remoteTasks  = (tRes.rows  || []).map(r => r.data);
-    const remoteGroups = (gRes.rows  || []).map(r => r.data);
-    const remoteTrash  = (trRes.rows || []).map(r => r.data);
-    const remoteSubMap = {};
-    (sRes.rows || []).forEach(r => { remoteSubMap[r.task_id] = r.data; });
-
-    // ── Merge ──
-    allTasks   = mergeById(allTasks,   remoteTasks);
-    taskGroups = mergeById(taskGroups, remoteGroups);
-    trashTasks = mergeById(trashTasks, remoteTrash);
-    Object.entries(remoteSubMap).forEach(([tid, subs]) => {
-      if (!allSubtasks[tid]) allSubtasks[tid] = subs;
-    });
-
-    saveTasks(allTasks);
-    saveGroups(taskGroups);
-    saveSubtasks(allSubtasks);
-    saveTrash(trashTasks);
-
-    // ── Push all ──
-    const now = new Date().toISOString();
-    const queries = [
-      ...allTasks.map(t => ({
-        query: `INSERT INTO tasks_sync (id, data, updated_at) VALUES ($1,$2,$3)
-                ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=EXCLUDED.updated_at`,
-        params: [t.id, JSON.stringify(t), t.updatedAt || now],
-      })),
-      ...taskGroups.map(g => ({
-        query: `INSERT INTO groups_sync (id, data, updated_at) VALUES ($1,$2,$3)
-                ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=EXCLUDED.updated_at`,
-        params: [g.id, JSON.stringify(g), g.createdAt || now],
-      })),
-      ...Object.entries(allSubtasks).map(([tid, subs]) => ({
-        query: `INSERT INTO subtasks_sync (task_id, data, updated_at) VALUES ($1,$2,$3)
-                ON CONFLICT (task_id) DO UPDATE SET data=EXCLUDED.data, updated_at=EXCLUDED.updated_at`,
-        params: [tid, JSON.stringify(subs), now],
-      })),
-      ...trashTasks.map(t => ({
-        query: `INSERT INTO trash_sync (id, data, updated_at) VALUES ($1,$2,$3)
-                ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=EXCLUDED.updated_at`,
-        params: [t.id, JSON.stringify(t), t.trashedAt || now],
-      })),
-    ];
-
-    if (queries.length) await neonTransaction(queries);
-
-    localStorage.removeItem('neon_pending');
-    setSyncStatus('synced', 'Synced');
-    populateGroupSelects();
-    renderAll();
-  } catch(e) {
-    console.error('Sync error:', e);
-    localStorage.setItem('neon_pending', '1');
-    setSyncStatus('error', 'Sync error — saved locally');
-  }
-}
-
-// ── File Backup (File System Access API) ────────────────────────────────────
-function isFileAccessSupported() {
-  return 'showSaveFilePicker' in window;
-}
-
-function openBackupDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('mytasks_backup', 1);
-    req.onupgradeneeded = e => e.target.result.createObjectStore('handles');
-    req.onsuccess = e => resolve(e.target.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function storeFileHandle(handle) {
-  const db = await openBackupDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('handles', 'readwrite');
-    tx.objectStore('handles').put(handle, 'backup');
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function getFileHandle() {
-  try {
-    const db = await openBackupDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction('handles', 'readonly');
-      const req = tx.objectStore('handles').get('backup');
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
-    });
-  } catch(e) { return null; }
-}
-
-async function clearStoredFileHandle() {
-  try {
-    const db = await openBackupDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction('handles', 'readwrite');
-      tx.objectStore('handles').delete('backup');
-      tx.oncomplete = resolve;
-      tx.onerror = resolve;
-    });
-  } catch(e) {}
-}
-
-async function getWritePermission(handle) {
-  try {
-    let perm = await handle.queryPermission({ mode: 'readwrite' });
-    if (perm === 'granted') return true;
-    perm = await handle.requestPermission({ mode: 'readwrite' });
-    return perm === 'granted';
-  } catch(e) { return false; }
-}
-
-function setBackupStatus(text, color) {
-  const el = document.getElementById('backup-status');
-  if (el) { el.textContent = text; el.style.color = color || 'var(--muted)'; }
-}
-
-let backupSaveTimer = null;
-function scheduleBackupSave() {
-  if (!isFileAccessSupported()) return;
-  clearTimeout(backupSaveTimer);
-  backupSaveTimer = setTimeout(performBackupSave, 2000);
-}
-
-async function performBackupSave() {
-  try {
-    const handle = await getFileHandle();
-    if (!handle) return;
-    const ok = await getWritePermission(handle);
-    if (!ok) { setBackupStatus('Permission denied — click Link Backup File to re-link', 'var(--pink)'); return; }
-    const data = {
-      tasks: allTasks, groups: taskGroups,
-      subtasks: allSubtasks, trash: trashTasks,
-      savedAt: new Date().toISOString(), version: 1,
-    };
-    const writable = await handle.createWritable();
-    await writable.write(JSON.stringify(data, null, 2));
-    await writable.close();
-    setBackupStatus('Auto-saved ' + new Date().toLocaleTimeString(), 'var(--green)');
-  } catch(e) {
-    setBackupStatus('Save failed: ' + e.message, 'var(--pink)');
-  }
-}
-
-async function linkBackupFile() {
-  if (!isFileAccessSupported()) {
-    alert('Auto backup requires Chrome or Edge.');
-    return;
-  }
-  try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: 'my-tasks-backup.json',
-      types: [{ description: 'JSON Backup', accept: { 'application/json': ['.json'] } }],
-    });
-    await storeFileHandle(handle);
-    await performBackupSave();
-  } catch(e) {
-    if (e.name !== 'AbortError') setBackupStatus('Could not link: ' + e.message, 'var(--pink)');
-  }
-}
-
-async function restoreFromBackup() {
-  try {
-    const handle = await getFileHandle();
-    if (!handle) { alert('No backup file linked. Click "Link Backup File" first.'); return; }
-    const ok = await getWritePermission(handle);
-    if (!ok) { alert('Permission denied to read the backup file.'); return; }
-    const file = await handle.getFile();
-    const text = await file.text();
-    const data = JSON.parse(text);
-    const savedAt = data.savedAt ? new Date(data.savedAt).toLocaleString() : 'unknown time';
-    if (!confirm(`Restore backup from ${savedAt}?\n\nThis will replace your current tasks.`)) return;
-    if (data.tasks)    { allTasks    = data.tasks;    localStorage.setItem('tasks',        JSON.stringify(allTasks)); }
-    if (data.groups)   { taskGroups  = data.groups;   localStorage.setItem('task_groups',  JSON.stringify(taskGroups)); }
-    if (data.subtasks) { allSubtasks = data.subtasks; localStorage.setItem('subtasks',     JSON.stringify(allSubtasks)); }
-    if (data.trash)    { trashTasks  = data.trash;    localStorage.setItem('tasks_trash',  JSON.stringify(trashTasks)); }
-    populateGroupSelects();
-    renderAll();
-    setBackupStatus('Restored from ' + savedAt, 'var(--green)');
-  } catch(e) {
-    alert('Could not restore: ' + e.message);
-  }
-}
-
-async function unlinkBackupFile() {
-  if (!confirm('Unlink backup file? The file on disk will not be deleted.')) return;
-  await clearStoredFileHandle();
-  setBackupStatus('Not linked');
-}
-
-async function initBackupStatus() {
-  if (!isFileAccessSupported()) {
-    setBackupStatus('Not supported — use Chrome or Edge');
-    return;
-  }
-  const handle = await getFileHandle();
-  setBackupStatus(handle ? 'Linked — auto-saving after changes' : 'Not linked', handle ? 'var(--green)' : 'var(--muted)');
-}
-
-function scheduleSyncAfterChange() {
-  if (!localStorage.getItem('neon_conn')) return;
-  if (!navigator.onLine) {
-    localStorage.setItem('neon_pending', '1');
-    setSyncStatus('pending', 'Pending sync');
-    return;
-  }
-  // Debounce: wait 1.5s after last change before syncing
-  clearTimeout(window._syncTimer);
-  window._syncTimer = setTimeout(syncWithNeon, 1500);
-}
 
 function purgeOldTrash() {
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
@@ -1404,7 +1076,14 @@ function taskRow(t, showGroupBadge) {
 function renderTasks(tasks) {
   const tbody = document.getElementById('task-tbody');
   if (!tasks.length) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">No tasks found.</div></td></tr>`;
+    const hasBackup = isFileAccessSupported();
+    const restoreHint = hasBackup
+      ? `<div style="margin-top:12px;font-size:0.82rem;color:var(--muted);">
+           Recently cleared browser data?
+           <button onclick="restoreFromBackup()" class="btn btn-outline btn-sm" style="margin-left:6px;">Restore from Backup</button>
+         </div>`
+      : '';
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">No tasks found.${restoreHint}</div></td></tr>`;
     return;
   }
 
@@ -2021,58 +1700,13 @@ function attachTrashListeners() {
 }
 
 function attachSettingsListeners() {
-  const modal  = document.getElementById('settings-modal');
-  const msgEl  = document.getElementById('settings-msg');
-
+  const modal = document.getElementById('settings-modal');
   document.getElementById('backup-link-btn').addEventListener('click', linkBackupFile);
   document.getElementById('backup-restore-btn').addEventListener('click', restoreFromBackup);
   document.getElementById('backup-unlink-btn').addEventListener('click', unlinkBackupFile);
-
-  function showMsg(text, color) {
-    msgEl.textContent = text;
-    msgEl.style.color = color || 'var(--muted)';
-  }
-
-  document.getElementById('settings-btn').addEventListener('click', () => {
-    const saved = localStorage.getItem('neon_conn') || '';
-    document.getElementById('settings-neon-conn').value = saved;
-    showMsg('');
-    modal.classList.add('open');
-  });
+  document.getElementById('settings-btn').addEventListener('click', () => modal.classList.add('open'));
   document.getElementById('settings-cancel-btn').addEventListener('click', () => modal.classList.remove('open'));
   modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
-
-  document.getElementById('settings-save-btn').addEventListener('click', () => {
-    const val = document.getElementById('settings-neon-conn').value.trim();
-    if (!val) { showMsg('Paste your connection string first.', 'var(--pink)'); return; }
-    localStorage.setItem('neon_conn', val);
-    showMsg('Saved! Connecting…', 'var(--green)');
-    modal.classList.remove('open');
-    syncWithNeon();
-  });
-
-  document.getElementById('settings-test-btn').addEventListener('click', async () => {
-    const val = document.getElementById('settings-neon-conn').value.trim();
-    if (!val) { showMsg('Paste a connection string first.', 'var(--pink)'); return; }
-    const prev = localStorage.getItem('neon_conn');
-    localStorage.setItem('neon_conn', val);
-    showMsg('Testing…', 'var(--muted)');
-    try {
-      await neonQuery('SELECT 1');
-      showMsg('✓ Connection successful!', 'var(--green)');
-    } catch(e) {
-      showMsg('✗ ' + e.message, 'var(--pink)');
-      if (prev) localStorage.setItem('neon_conn', prev);
-      else localStorage.removeItem('neon_conn');
-    }
-  });
-
-  document.getElementById('settings-clear-btn').addEventListener('click', () => {
-    localStorage.removeItem('neon_conn');
-    document.getElementById('settings-neon-conn').value = '';
-    showMsg('Disconnected.', 'var(--muted)');
-    setSyncStatus('unconfigured', 'No sync configured');
-  });
 }
 
 
@@ -2117,24 +1751,6 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme(next);
   });
 
-  // Online/offline handling
-  window.addEventListener('offline', () => {
-    setSyncStatus('offline', 'Offline — changes saved locally');
-  });
-  window.addEventListener('online', () => {
-    if (localStorage.getItem('neon_conn')) syncWithNeon();
-  });
-
-  // Initial sync
-  if (localStorage.getItem('neon_conn')) {
-    if (navigator.onLine) {
-      syncWithNeon();
-    } else {
-      setSyncStatus('offline', 'Offline — changes saved locally');
-    }
-  } else {
-    setSyncStatus('unconfigured', 'No sync configured');
-  }
 });
 </script>
 </body>
