@@ -954,12 +954,12 @@ async function restoreFromBackup() {
     const text = await file.text();
     const data = JSON.parse(text);
     if (!confirm('Restore data from backup? This will overwrite your current tasks.')) return;
-    if (data.tasks)    { allTasks = data.tasks;       localStorage.setItem('tasks', JSON.stringify(allTasks)); }
-    if (data.trash)    { trashTasks = data.trash;     localStorage.setItem('tasks_trash', JSON.stringify(trashTasks)); }
-    if (data.groups)   { taskGroups = data.groups;    localStorage.setItem('task_groups', JSON.stringify(taskGroups)); }
-    if (data.subtasks) { allSubtasks = data.subtasks; localStorage.setItem('subtasks', JSON.stringify(allSubtasks)); }
-    renderTasks();
-    renderGroups();
+    if (data.tasks)    { allTasks    = data.tasks;    localStorage.setItem('tasks',       JSON.stringify(allTasks)); }
+    if (data.trash)    { trashTasks  = data.trash;    localStorage.setItem('tasks_trash', JSON.stringify(trashTasks)); }
+    if (data.groups)   { taskGroups  = data.groups;   localStorage.setItem('task_groups', JSON.stringify(taskGroups)); }
+    if (data.subtasks) { allSubtasks = data.subtasks; localStorage.setItem('subtasks',    JSON.stringify(allSubtasks)); }
+    populateGroupSelects();
+    renderAll();
     alert('Restore complete!');
     setBackupStatus('Backup linked', 'ok');
   } catch (e) {
