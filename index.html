@@ -377,8 +377,12 @@
     .subtask-item input[type="checkbox"] { cursor: pointer; accent-color: var(--blue); flex-shrink:0; }
     .subtask-text                  { flex: 1; font-size: 0.88rem; }
     .subtask-text.done             { text-decoration: line-through; color: var(--muted); }
-    .subtask-del                   { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.78rem; opacity: 0; flex-shrink:0; }
-    .subtask-item:hover .subtask-del { opacity: 1; }
+    .subtask-del, .subtask-edit, .subtask-move { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.78rem; opacity: 0; flex-shrink:0; padding: 0 2px; line-height: 1; }
+    .subtask-move                  { font-size: 0.6rem; }
+    .subtask-item:hover .subtask-del,
+    .subtask-item:hover .subtask-edit,
+    .subtask-item:hover .subtask-move { opacity: 1; }
+    .subtask-edit-input            { flex: 1; background: var(--input-bg); border: 1px solid var(--blue); color: var(--text); border-radius: 3px; padding: 2px 6px; font-size: 0.88rem; outline: none; }
     .subtask-progress              { margin-bottom: 8px; }
     .subtask-progress-label        { font-size: 0.78rem; color: var(--muted); }
     .subtask-progress-bar          { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-top: 3px; }
@@ -1231,9 +1235,12 @@ function taskRow(t, showGroupBadge) {
       </td>
     </tr>`;
   if (!isExpanded) return mainRow;
-  const subsHtml = subs.map(s => `<div class="subtask-item">
+  const subsHtml = subs.map((s, i) => `<div class="subtask-item">
       <input type="checkbox" data-taskid="${t.id}" data-subtaskid="${s.id}" ${s.done ? 'checked' : ''} />
       <span class="subtask-text ${s.done ? 'done' : ''}">${escape(s.text)}</span>
+      <button class="subtask-move subtask-up" data-taskid="${t.id}" data-subtaskid="${s.id}" title="Move up" ${i === 0 ? 'style="visibility:hidden"' : ''}>▲</button>
+      <button class="subtask-move subtask-down" data-taskid="${t.id}" data-subtaskid="${s.id}" title="Move down" ${i === subs.length - 1 ? 'style="visibility:hidden"' : ''}>▼</button>
+      <button class="subtask-edit" data-taskid="${t.id}" data-subtaskid="${s.id}" title="Edit">✎</button>
       <button class="subtask-del" data-taskid="${t.id}" data-subtaskid="${s.id}" title="Remove">✕</button>
     </div>`).join('');
   const subtaskPanel = `<tr class="subtask-panel-row"><td colspan="7"><div class="subtask-panel">
@@ -1529,6 +1536,46 @@ function toggleSubtask(taskId, subtaskId) {
   renderAll();
 }
 
+function moveSubtask(taskId, subtaskId, direction) {
+  const subs = allSubtasks[taskId];
+  if (!subs) return;
+  const idx = subs.findIndex(s => s.id === subtaskId);
+  if (direction === 'up' && idx > 0) {
+    [subs[idx - 1], subs[idx]] = [subs[idx], subs[idx - 1]];
+  } else if (direction === 'down' && idx < subs.length - 1) {
+    [subs[idx + 1], subs[idx]] = [subs[idx], subs[idx + 1]];
+  } else return;
+  saveSubtasks(allSubtasks);
+  renderAll();
+}
+
+function editSubtask(taskId, subtaskId, itemEl) {
+  const textEl = itemEl.querySelector('.subtask-text');
+  if (!textEl) return;
+  const sub = (allSubtasks[taskId] || []).find(s => s.id === subtaskId);
+  if (!sub) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = sub.text;
+  input.className = 'subtask-edit-input';
+  textEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let saved = false;
+  function save() {
+    if (saved) return;
+    saved = true;
+    const newText = input.value.trim();
+    if (newText && newText !== sub.text) { sub.text = newText; saveSubtasks(allSubtasks); }
+    renderAll();
+  }
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); save(); }
+    if (e.key === 'Escape') { saved = true; renderAll(); }
+  });
+  input.addEventListener('blur', save);
+}
+
 // ── Event Listeners ────────────────────────────────────────────────────────
 function attachFormListener() {
   let formSubtasks = [];
@@ -1818,6 +1865,17 @@ function attachTableListener() {
     const subDel = e.target.closest('.subtask-del');
     if (subDel) {
       deleteSubtask(subDel.dataset.taskid, subDel.dataset.subtaskid);
+      return;
+    }
+    // Subtask move up/down
+    const subUp = e.target.closest('.subtask-up');
+    if (subUp) { moveSubtask(subUp.dataset.taskid, subUp.dataset.subtaskid, 'up'); return; }
+    const subDown = e.target.closest('.subtask-down');
+    if (subDown) { moveSubtask(subDown.dataset.taskid, subDown.dataset.subtaskid, 'down'); return; }
+    // Subtask edit
+    const subEdit = e.target.closest('.subtask-edit');
+    if (subEdit) {
+      editSubtask(subEdit.dataset.taskid, subEdit.dataset.subtaskid, subEdit.closest('.subtask-item'));
       return;
     }
     // Subtask add button
