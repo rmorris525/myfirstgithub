@@ -1124,7 +1124,6 @@ function filterTasks(tasks, filter) {
 
   if (filter.status === 'pending') {
     result = tasks.filter(t => t.status === 'pending');
-    result.sort((a, b) => dueSortKey(a.dueDate).localeCompare(dueSortKey(b.dueDate)));
   } else if (filter.status === 'complete') {
     result = tasks.filter(t => t.status === 'complete');
     if (filter.fromDate) {
@@ -1135,14 +1134,12 @@ function filterTasks(tasks, filter) {
       const to = new Date(filter.toDate + 'T23:59:59').getTime();
       result = result.filter(t => t.completedAt && new Date(t.completedAt).getTime() <= to);
     }
-    result.sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1));
   } else {
     result = [...tasks];
-    result.sort((a, b) => {
-      if (a.status === b.status) return dueSortKey(a.dueDate).localeCompare(dueSortKey(b.dueDate));
-      return a.status === 'pending' ? -1 : 1;
-    });
   }
+
+  // Always sort by Added date, newest first
+  result.sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
 
   if (filter.groupId) {
     result = result.filter(t => t.groupId === filter.groupId);
