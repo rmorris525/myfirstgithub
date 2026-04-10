@@ -685,9 +685,6 @@
   <div class="card" style="padding:16px 24px;">
     <div class="filter-bar">
       <div class="tab-group">
-        <button class="btn btn-outline active" data-tab="all">All</button>
-        <button class="btn btn-outline" data-tab="pending">Pending</button>
-        <button class="btn btn-outline" data-tab="complete">Completed</button>
         <button class="btn btn-outline" data-tab="trash">Trash</button>
       </div>
       <div id="date-range-section">
@@ -758,7 +755,7 @@
 let allTasks = [];
 let trashTasks = [];
 let taskGroups = [];
-let currentFilter   = { status: 'all', fromDate: '', toDate: '', groupId: null };
+let currentFilter   = { status: 'pending', fromDate: '', toDate: '', groupId: null };
 let collapsedGroups  = new Set(); // group ids collapsed in All Tasks view; '__ungrouped__' for Ungrouped
 let allSubtasks      = {};
 let expandedSubtasks = new Set(); // task ids whose subtask panel is open
@@ -1120,11 +1117,10 @@ function dueSortKey(d) {
 
 // ── Filtering ──────────────────────────────────────────────────────────────
 function filterTasks(tasks, filter) {
-  let result = tasks;
+  let result;
 
-  if (filter.status === 'pending') {
-    result = tasks.filter(t => t.status === 'pending');
-  } else if (filter.status === 'complete') {
+  if (filter.status === 'complete') {
+    // Completed view: all completed tasks across all groups, with optional date range
     result = tasks.filter(t => t.status === 'complete');
     if (filter.fromDate) {
       const from = new Date(filter.fromDate + 'T00:00:00').getTime();
@@ -1135,16 +1131,15 @@ function filterTasks(tasks, filter) {
       result = result.filter(t => t.completedAt && new Date(t.completedAt).getTime() <= to);
     }
   } else {
-    result = [...tasks];
+    // All other views: pending tasks only
+    result = tasks.filter(t => t.status === 'pending');
+    if (filter.groupId) {
+      result = result.filter(t => t.groupId === filter.groupId);
+    }
   }
 
   // Always sort by Added date, newest first
   result.sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
-
-  if (filter.groupId) {
-    result = result.filter(t => t.groupId === filter.groupId);
-  }
-
   return result;
 }
 
@@ -1152,18 +1147,20 @@ function filterTasks(tasks, filter) {
 function renderSidebar() {
   const list = document.getElementById('sb-list');
   if (!list) return;
-  const allCount = allTasks.length;
-  const isAllActive = !currentFilter.groupId;
+  const isCompletedView = currentFilter.status === 'complete';
+  const pendingCount = allTasks.filter(t => t.status === 'pending').length;
+  const completedCount = allTasks.filter(t => t.status === 'complete').length;
+  const isAllActive = !currentFilter.groupId && !isCompletedView;
 
   let html = `<li class="sb-item ${isAllActive ? 'sb-item--active' : ''}" data-gid="">
-    All Tasks <span class="sb-count">${allCount}</span>
+    All Tasks <span class="sb-count">${pendingCount}</span>
   </li>`;
 
   if (taskGroups.length) {
     html += '<li class="sb-divider"></li>';
     taskGroups.forEach(g => {
-      const cnt = allTasks.filter(t => t.groupId === g.id).length;
-      const isActive = currentFilter.groupId === g.id;
+      const cnt = allTasks.filter(t => t.groupId === g.id && t.status === 'pending').length;
+      const isActive = currentFilter.groupId === g.id && !isCompletedView;
       html += `<li class="sb-item ${isActive ? 'sb-item--active' : ''}" data-gid="${g.id}">
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escape(g.name)}</span>
         <span class="sb-count">${cnt}</span>
@@ -1171,6 +1168,11 @@ function renderSidebar() {
       </li>`;
     });
   }
+
+  html += `<li class="sb-divider"></li>
+  <li class="sb-item ${isCompletedView ? 'sb-item--active' : ''}" data-status="complete" style="color:var(--green);">
+    ✓ Completed <span class="sb-count">${completedCount}</span>
+  </li>`;
 
   list.innerHTML = html;
 }
@@ -1264,7 +1266,7 @@ function renderTasks(tasks) {
     return;
   }
 
-  const isGroupedView = currentFilter.status === 'all' || currentFilter.status === 'pending';
+  const isGroupedView = currentFilter.status !== 'complete';
   const hasAnyGroups  = taskGroups.length > 0 && tasks.some(t => t.groupId) && !currentFilter.groupId;
 
   if (isGroupedView && hasAnyGroups) {
@@ -1299,7 +1301,7 @@ function renderTasks(tasks) {
     return;
   }
 
-  tbody.innerHTML = tasks.map(t => taskRow(t, currentFilter.status === 'complete')).join('');
+  tbody.innerHTML = tasks.map(t => taskRow(t, !currentFilter.groupId)).join('');
 }
 
 function renderTrash() {
@@ -1495,7 +1497,21 @@ function attachSidebarListeners() {
     const item = e.target.closest('.sb-item');
     if (del) { deleteGroup(del.dataset.gid); return; }
     if (item) {
-      currentFilter.groupId = item.dataset.gid || null;
+      if (item.dataset.status === 'complete') {
+        currentFilter.status  = 'complete';
+        currentFilter.groupId = null;
+        document.getElementById('date-range-section').style.display = 'flex';
+        document.getElementById('copy-btn-wrap').style.display      = 'inline-flex';
+        document.getElementById('task-table-card').style.display    = '';
+        document.getElementById('trash-section').style.display      = 'none';
+      } else {
+        currentFilter.status  = 'pending';
+        currentFilter.groupId = item.dataset.gid || null;
+        document.getElementById('date-range-section').style.display = 'none';
+        document.getElementById('copy-btn-wrap').style.display      = 'none';
+        document.getElementById('task-table-card').style.display    = '';
+        document.getElementById('trash-section').style.display      = 'none';
+      }
       renderSidebar();
       renderAll();
     }
@@ -1701,18 +1717,18 @@ function attachFormListener() {
 }
 
 function attachFilterListeners() {
-  // Tab buttons
+  // Tab buttons (only Trash remains in top bar)
   document.querySelectorAll('[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      currentFilter.status = btn.dataset.tab;
-      const isComplete = currentFilter.status === 'complete';
-      const isTrash    = currentFilter.status === 'trash';
-      document.getElementById('date-range-section').style.display = isComplete ? 'flex' : 'none';
-      document.getElementById('copy-btn-wrap').style.display      = isComplete ? 'inline-flex' : 'none';
-      document.getElementById('task-table-card').style.display    = isTrash ? 'none' : '';
-      document.getElementById('trash-section').style.display      = isTrash ? '' : 'none';
+      currentFilter.status  = btn.dataset.tab;
+      currentFilter.groupId = null;
+      document.getElementById('date-range-section').style.display = 'none';
+      document.getElementById('copy-btn-wrap').style.display      = 'none';
+      document.getElementById('task-table-card').style.display    = 'none';
+      document.getElementById('trash-section').style.display      = '';
+      renderSidebar();
       renderAll();
     });
   });
