@@ -684,9 +684,6 @@
 
   <div class="card" style="padding:16px 24px;">
     <div class="filter-bar">
-      <div class="tab-group">
-        <button class="btn btn-outline" data-tab="trash">Trash</button>
-      </div>
       <div id="date-range-section">
         <select id="month-history" title="Browse by month">
           <option value="">— Browse by Month —</option>
@@ -1169,9 +1166,15 @@ function renderSidebar() {
     });
   }
 
+  const isTrashView = currentFilter.status === 'trash';
+  const trashCount  = trashTasks.length;
+
   html += `<li class="sb-divider"></li>
   <li class="sb-item ${isCompletedView ? 'sb-item--active' : ''}" data-status="complete" style="color:var(--green);">
     ✓ Completed <span class="sb-count">${completedCount}</span>
+  </li>
+  <li class="sb-item ${isTrashView ? 'sb-item--active' : ''}" data-status="trash" style="color:var(--pink);">
+    🗑 Trash <span class="sb-count">${trashCount}</span>
   </li>`;
 
   list.innerHTML = html;
@@ -1497,13 +1500,21 @@ function attachSidebarListeners() {
     const item = e.target.closest('.sb-item');
     if (del) { deleteGroup(del.dataset.gid); return; }
     if (item) {
-      if (item.dataset.status === 'complete') {
+      const status = item.dataset.status;
+      if (status === 'complete') {
         currentFilter.status  = 'complete';
         currentFilter.groupId = null;
         document.getElementById('date-range-section').style.display = 'flex';
         document.getElementById('copy-btn-wrap').style.display      = 'inline-flex';
         document.getElementById('task-table-card').style.display    = '';
         document.getElementById('trash-section').style.display      = 'none';
+      } else if (status === 'trash') {
+        currentFilter.status  = 'trash';
+        currentFilter.groupId = null;
+        document.getElementById('date-range-section').style.display = 'none';
+        document.getElementById('copy-btn-wrap').style.display      = 'none';
+        document.getElementById('task-table-card').style.display    = 'none';
+        document.getElementById('trash-section').style.display      = '';
       } else {
         currentFilter.status  = 'pending';
         currentFilter.groupId = item.dataset.gid || null;
@@ -1717,22 +1728,6 @@ function attachFormListener() {
 }
 
 function attachFilterListeners() {
-  // Tab buttons (only Trash remains in top bar)
-  document.querySelectorAll('[data-tab]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentFilter.status  = btn.dataset.tab;
-      currentFilter.groupId = null;
-      document.getElementById('date-range-section').style.display = 'none';
-      document.getElementById('copy-btn-wrap').style.display      = 'none';
-      document.getElementById('task-table-card').style.display    = 'none';
-      document.getElementById('trash-section').style.display      = '';
-      renderSidebar();
-      renderAll();
-    });
-  });
-
   // Month history dropdown
   document.getElementById('month-history').addEventListener('change', e => {
     const val = e.target.value;
